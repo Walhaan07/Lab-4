@@ -1,7 +1,23 @@
 /*
- * panel.css -- styles for the injected button and the report panel.
- * Loaded inside a shadow root, so these rules cannot affect the host page
- * and the host page cannot affect them.
+ * panel-style.js  --  styles for the injected button and report panel.
+ * ---------------------------------------------------------------------------
+ * The CSS lives in a JavaScript string rather than a .css file on purpose.
+ *
+ *  - The UI is built inside a shadow root, and a stylesheet injected through
+ *    the manifest's "css" entry does not cross a shadow boundary.
+ *  - Loading it with <link href="chrome-extension://.../panel.css"> works only
+ *    where the file is listed in web_accessible_resources, which does not cover
+ *    file:/// pages. That is why the button appeared unstyled (and therefore
+ *    invisible) on pages opened from disk.
+ *
+ * Injecting the text directly works on every page the content script reaches,
+ * and there is no flash of unstyled content while a stylesheet loads.
+ * ---------------------------------------------------------------------------
+ */
+window.SSC_PANEL_CSS = `
+/*
+ * These rules are injected into the shadow root, so they cannot affect the
+ * host page and the host page cannot affect them.
  */
 
 :host, * { box-sizing: border-box; }
@@ -293,3 +309,5 @@
     .ssc-clean { background: #10231a; color: #bbf7d0; }
     .ssc-cap { background: #2a1216; color: #fecaca; }
 }
+
+`;

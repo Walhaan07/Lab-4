@@ -39,23 +39,12 @@
         "file:///*"
       ],
       "js": [
+        "js/panel-style.js",
         "js/spam-analyzer.js",
         "js/content.js"
       ],
       "run_at": "document_idle",
       "all_frames": false
-    }
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "css/panel.css",
-        "icons/*.png"
-      ],
-      "matches": [
-        "http://*/*",
-        "https://*/*"
-      ]
     }
   ],
   "browser_specific_settings": {

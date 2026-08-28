@@ -20,6 +20,19 @@ whether it is spam / phishing and to give it a **safety rating (A–F, 0–100)*
    folder above it, and do not select the manifest file itself.
 5. Visit any website. The button appears in the bottom right corner; press it to run the scan.
 
+### To use it on the sample pages (or any page opened from disk)
+
+Pages opened from disk have a `file:///C:/...` address, and **browsers do not run extensions on
+those unless you allow it**, one extension at a time:
+
+1. On `edge://extensions`, click **Details** on *Site Safety Checker*.
+2. Switch on **Allow access to file URLs**.
+3. Reload the page you are testing.
+
+Without that switch the button will not appear on `test-pages/safe-sample.html`, and the page
+will look completely untouched. Nothing is wrong with the extension — the browser simply never
+ran it. Pages served over `http://` or `https://` (including `http://localhost`) need no switch.
+
 Chrome is identical (`chrome://extensions`), because Edge and Chrome use the same engine.
 For **Firefox**, rename `manifest.firefox.json` to `manifest.json`, then load it from
 `about:debugging#/runtime/this-firefox` → *Load Temporary Add-on…*
@@ -27,10 +40,9 @@ For **Firefox**, rename `manifest.firefox.json` to `manifest.json`, then load it
 After editing any file, press **Reload** on the extension card, then refresh the page you are
 testing.
 
-> Browsers block extensions on their own internal pages (`edge://`, `chrome://`, the add-on
-> store), so the button will not appear there. That is a browser rule, not a fault in the
-> extension. To use it on pages opened from disk (`file:///…`), switch on *Allow access to
-> file URLs* on the extension's details page.
+> Browsers also block extensions on their own internal pages (`edge://`, `chrome://`, the
+> add-on store), so the button will not appear there either. That is a browser rule, not a
+> fault in the extension.
 
 ---
 
@@ -41,12 +53,12 @@ extension/                  <-- load THIS folder as an unpacked extension
 ├── manifest.json           Manifest V3 (Edge / Chrome)
 ├── manifest.firefox.json   Manifest V3 variant for Firefox
 ├── popup.html              toolbar popup
-├── css/panel.css           styles for the injected button and report panel
-├── css/popup.css
+├── css/popup.css           styles for the popup only
 ├── icons/                  icon16 / icon48 / icon128 .png
 └── js/
     ├── spam-analyzer.js    THE ENGINE - all 49 tests and the scoring
     ├── content.js          PART 1 + PART 2 - injected into every page
+    ├── panel-style.js      the button / report CSS, injected as text
     ├── background.js       service worker: toolbar badge, per-tab results
     └── popup.js            toolbar popup logic
 
@@ -70,7 +82,7 @@ so the browser injects it into every page that is visited:
 ```json
 "content_scripts": [{
   "matches": ["http://*/*", "https://*/*", "file:///*"],
-  "js": ["js/spam-analyzer.js", "js/content.js"],
+  "js": ["js/panel-style.js", "js/spam-analyzer.js", "js/content.js"],
   "run_at": "document_idle"
 }]
 ```
@@ -79,6 +91,10 @@ The script then:
 
 * builds the button inside a **shadow root**, so the host page's CSS cannot break the button
   and the extension's CSS cannot leak into the page;
+* injects the panel CSS **as text** (`panel-style.js`) rather than linking a `.css` file: a
+  stylesheet injected through the manifest does not cross a shadow boundary, and a linked
+  `chrome-extension://` stylesheet is blocked on `file:///` pages, which left the button
+  unstyled and therefore invisible there;
 * labels it `🛡 You are on "<current URL>"` — shortened on the button, full URL in the tooltip
   and in the report;
 * keeps the label correct on single page apps, where the address changes without loading a new
@@ -197,9 +213,9 @@ Three ideas make the number meaningful:
 ## 5. Demonstrating it
 
 1. Load the extension (section 1).
-2. Open `test-pages/safe-sample.html` and `test-pages/spam-sample.html` in the browser and
-   press the button on each. The clean page rates **A** with no warnings; the mock spam page
-   rates **F**.
+2. Turn on *Allow access to file URLs* (section 1), then open `test-pages/safe-sample.html`
+   and `test-pages/spam-sample.html` in the browser and press the button on each. The clean
+   page rates **A** with no warnings; the mock spam page rates **F** with 16 warnings.
 3. Press the button on any real website to show it working on live pages.
 
 `spam-sample.html` is a harmless mock: the form target does not exist, the "download" link

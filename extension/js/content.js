@@ -41,14 +41,6 @@
         return pretty.slice(0, max - 1) + '…';
     }
 
-    function runtimeUrl(path) {
-        try {
-            return chrome.runtime.getURL(path);
-        } catch (e) {
-            return path;
-        }
-    }
-
     /* ------------------------------------------------------------ building */
 
     function buildUi() {
@@ -56,15 +48,21 @@
         host.id = HOST_ID;
         // The host element itself is styled inline: nothing on the page can
         // override these, and nothing here can leak onto the page.
-        host.style.cssText = 'all: initial; position: fixed; z-index: 2147483647;';
+        /* The host is pinned bottom-right inline as well as in the stylesheet:
+           if the styles ever fail to apply, the button is still where the user
+           expects it rather than trailing off the end of the page. */
+        host.style.cssText = 'all: initial; position: fixed; right: 18px; bottom: 18px; ' +
+                             'width: 0; height: 0; z-index: 2147483647;';
         (document.body || document.documentElement).appendChild(host);
 
         shadow = host.attachShadow({mode: 'open'});
 
-        var link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = runtimeUrl('css/panel.css');
-        shadow.appendChild(link);
+        /* The stylesheet is injected as text, not linked: a linked
+           chrome-extension:// stylesheet is blocked on file:/// pages, which
+           left the button unstyled and effectively invisible there. */
+        var style = document.createElement('style');
+        style.textContent = window.SSC_PANEL_CSS || '';
+        shadow.appendChild(style);
 
         /* ---- Part 1: the embedded button --------------------------------- */
         var button = el('button', 'ssc-button');
