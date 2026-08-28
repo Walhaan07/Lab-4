@@ -17,17 +17,22 @@ function show(report) {
     $('result').hidden = false;
     $('grade').textContent = report.rating;
     $('grade').className = 'grade ' + (LEVELS.includes(report.level) ? report.level : '');
-    $('verdict').textContent = `${report.verdict} — ${report.score}/100`;
+    $('verdict').textContent = `${report.verdict} · ${report.score}/100`;
 
     const failedCount = report.failedCount !== undefined ? report.failedCount : report.failed;
-    $('detail').textContent = `${failedCount} of ${report.total} tests raised a warning`;
+    $('detail').textContent = failedCount
+        ? `${failedCount} of ${report.total} checks raised a finding`
+        : `All ${report.total} checks passed`;
+    $('checkCount').textContent = `${report.total} heuristic checks`;
 
     const list = $('findings');
     list.replaceChildren();
     if (Array.isArray(report.failed)) {
         report.failed.slice(0, 5).forEach((check) => {
             const li = document.createElement('li');
-            if (check.severity === 'high') { li.className = 'high'; }
+            if (check.severity === 'high' || check.severity === 'medium') {
+                li.className = check.severity;
+            }
             li.textContent = `${check.title}: ${check.detail}`;
             list.appendChild(li);
         });
@@ -59,13 +64,17 @@ function ask(tabId, message) {
 
     $('run').addEventListener('click', async () => {
         if (!tab) { return; }
-        $('verdict').textContent = 'Running the tests…';
+        $('verdict').textContent = 'Running the checks…';
+        $('detail').textContent = 'One moment.';
         $('result').hidden = false;
         await ask(tab.id, {type: 'SSC_RUN'});
         window.setTimeout(async () => {
             const response = await ask(tab.id, {type: 'SSC_GET_REPORT'});
             if (response && response.report) { show(response.report); }
-            else { $('verdict').textContent = 'This page cannot be scanned.'; }
+            else {
+                $('verdict').textContent = 'This page cannot be checked';
+                $('detail').textContent = 'Browsers block extensions on internal pages.';
+            }
         }, 250);
     });
 

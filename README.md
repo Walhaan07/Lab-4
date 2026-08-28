@@ -123,6 +123,25 @@ Pressing the button (or **Alt+Shift+S**) runs all 49 tests and opens a report sh
 score, the letter rating, every warning with its penalty, and the tests that passed. The
 rating also appears on the button and on the toolbar icon badge.
 
+### The interface
+
+The button and the report are drawn from one small design system defined at the top of
+`js/panel-style.js`: a neutral ramp, one accent, and five semantic colours that the score
+ring, the rating badge and the findings all share.
+
+* **Themes.** Light and dark are both defined, and the UI follows the reader's system setting
+  rather than the colours of whatever page it is sitting on.
+* **Contrast.** Every piece of text was measured against the surface behind it and meets
+  WCAG AA. The button is translucent, so its contrast depends on the page underneath; measured
+  from rendered pixels it ranges from 10.8:1 (dark theme over a light page) to 18.9:1.
+* **The score ring** is an SVG arc with round caps that sweeps up to the score, rather than a
+  conic gradient, which cannot round its ends and shows a hard seam.
+* **Motion** is limited to a short panel entrance and the ring sweep, and both are dropped
+  entirely under `prefers-reduced-motion`.
+* **Keyboard and screen readers.** Alt+Shift+S opens the report and Escape closes it, every
+  control has a visible focus ring, and the report body is a polite live region so a finished
+  scan is announced.
+
 ### The 49 tests
 
 *Scope* **URL** = works from the address alone · **Page** = needs the page content.

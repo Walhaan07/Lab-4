@@ -6,11 +6,18 @@
 <link rel="stylesheet" href="css/popup.css">
 </head>
 <body>
+
 <header class="head">
-    <img src="icons/icon48.png" alt="" width="28" height="28">
-    <div>
+    <span class="head__mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 2.6 4.6 5.7v5.5c0 4.4 3.1 8.5 7.4 9.6 4.3-1.1 7.4-5.2 7.4-9.6V5.7Z"/>
+            <path d="m9 11.8 2.2 2.2 4-4.3"/>
+        </svg>
+    </span>
+    <div class="head__text">
         <h1>Site Safety Checker</h1>
-        <p class="sub">Demo 4 &middot; 49 heuristic tests</p>
+        <p class="head__sub" id="checkCount">Heuristic spam &amp; phishing checks</p>
     </div>
 </header>
 
@@ -20,20 +27,20 @@
     <span class="grade" id="grade">?</span>
     <div class="result__text">
         <strong id="verdict">Not tested yet</strong>
-        <span id="detail">Press &ldquo;Test this site&rdquo; to run the scan.</span>
+        <span id="detail">Run the checks to rate this site.</span>
     </div>
 </div>
 
 <ul class="findings" id="findings"></ul>
 
-<div class="actions">
-    <button type="button" id="run" class="primary">Test this site</button>
-</div>
+<button type="button" id="run" class="primary">Check this site</button>
 
 <label class="toggle">
     <input type="checkbox" id="showButton" checked>
     <span>Show the button on web pages</span>
 </label>
+
+<p class="foot">Everything runs locally. Nothing leaves your browser.</p>
 
 <script src="js/popup.js"></script>
 </body>

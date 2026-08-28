@@ -21,6 +21,8 @@
 
     var HOST_ID = 'site-safety-checker-root';
     var DEFAULT_POSITION = {right: 18, bottom: 100};
+    var TEST_COUNT = (window.SpamAnalyzer && window.SpamAnalyzer.checks)
+        ? window.SpamAnalyzer.checks.length : 0;
     var DRAG_THRESHOLD = 4;             // px before a press counts as a drag
     var shadow = null;
     var elements = {};
@@ -29,6 +31,43 @@
     var positionIsUserChosen = false;   // a dragged position always wins
 
     /* ------------------------------------------------------------- helpers */
+
+    var SVG_NS = 'http://www.w3.org/2000/svg';
+
+    /*
+     * Inline SVG rather than emoji: an emoji is drawn by the operating system,
+     * so the same button looks different on Windows, macOS and Linux, and it
+     * cannot take the accent colour.
+     */
+    var ICON_PATHS = {
+        shield: 'M12 2.6 4.6 5.7v5.5c0 4.4 3.1 8.5 7.4 9.6 4.3-1.1 7.4-5.2 7.4-9.6V5.7Z',
+        shieldCheck: ['M12 2.6 4.6 5.7v5.5c0 4.4 3.1 8.5 7.4 9.6 4.3-1.1 7.4-5.2 7.4-9.6V5.7Z',
+                      'm9 11.8 2.2 2.2 4-4.3'],
+        close: ['M6 6l12 12', 'M18 6 6 18'],
+        check: ['m5 12.5 4.5 4.5L19 7.5'],
+        alert: ['M12 8.4v4.8', 'M12 16.5h.01',
+                'M10.3 3.6 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z'],
+        chevron: ['m9 6 6 6-6 6'],
+        refresh: ['M20 11.5A8 8 0 1 1 17.6 6', 'M20 4v5h-5']
+    };
+
+    function icon(name, strokeWidth) {
+        var svg = document.createElementNS(SVG_NS, 'svg');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('fill', 'none');
+        svg.setAttribute('stroke', 'currentColor');
+        svg.setAttribute('stroke-width', String(strokeWidth || 1.9));
+        svg.setAttribute('stroke-linecap', 'round');
+        svg.setAttribute('stroke-linejoin', 'round');
+        svg.setAttribute('aria-hidden', 'true');
+        var paths = ICON_PATHS[name];
+        (typeof paths === 'string' ? [paths] : paths).forEach(function (d) {
+            var path = document.createElementNS(SVG_NS, 'path');
+            path.setAttribute('d', d);
+            svg.appendChild(path);
+        });
+        return svg;
+    }
 
     function el(tag, className, text) {
         var node = document.createElement(tag);
@@ -85,9 +124,10 @@
             '\nDrag the button to move it out of the way';
         button.setAttribute('aria-haspopup', 'dialog');
 
-        var shield = el('span', 'ssc-button__icon', '🛡');
+        var shield = el('span', 'ssc-button__mark');
+        shield.appendChild(icon('shieldCheck'));
         var label = el('span', 'ssc-button__label');
-        label.appendChild(el('span', 'ssc-button__lead', 'You are on '));
+        label.appendChild(el('span', 'ssc-button__lead', 'You are on'));
         label.appendChild(el('span', 'ssc-button__url', '"' + shortUrl(location.href) + '"'));
 
         var badge = el('span', 'ssc-button__badge');
@@ -104,18 +144,33 @@
         panel.setAttribute('aria-label', 'Site safety report');
 
         var header = el('header', 'ssc-panel__head');
-        header.appendChild(el('h2', 'ssc-panel__title', 'Site safety report'));
-        var close = el('button', 'ssc-panel__close', '×');
+
+        var mark = el('span', 'ssc-panel__mark');
+        mark.appendChild(icon('shield'));
+
+        var heading = el('div', 'ssc-panel__heading');
+        heading.appendChild(el('h2', 'ssc-panel__title', 'Site safety report'));
+        heading.appendChild(el('p', 'ssc-panel__subtitle', TEST_COUNT + ' checks · runs in this browser'));
+
+        var close = el('button', 'ssc-icon-btn ssc-panel__close');
         close.type = 'button';
         close.title = 'Close (Esc)';
+        close.setAttribute('aria-label', 'Close the report');
+        close.appendChild(icon('close'));
+
+        header.appendChild(mark);
+        header.appendChild(heading);
         header.appendChild(close);
 
         var body = el('div', 'ssc-panel__body');
+        body.setAttribute('aria-live', 'polite');
 
         var footer = el('footer', 'ssc-panel__foot');
-        var rerun = el('button', 'ssc-btn ssc-btn--ghost', 'Run tests again');
+        var rerun = el('button', 'ssc-btn');
         rerun.type = 'button';
-        var note = el('span', 'ssc-foot__note', 'Heuristic scan · no data leaves your browser');
+        rerun.appendChild(icon('refresh'));
+        rerun.appendChild(el('span', null, 'Rescan'));
+        var note = el('span', 'ssc-foot__note', 'Heuristic scan · nothing leaves your browser');
         footer.appendChild(rerun);
         footer.appendChild(note);
 
@@ -146,10 +201,10 @@
     function runTests(force) {
         if (lastReport && !force) { return lastReport; }
 
-        var testCount = (window.SpamAnalyzer && window.SpamAnalyzer.checks)
-            ? window.SpamAnalyzer.checks.length : 0;
-        elements.body.replaceChildren(el('p', 'ssc-loading',
-            'Running ' + testCount + ' safety tests on this page…'));
+        var loading = el('p', 'ssc-loading');
+        loading.appendChild(el('span', 'ssc-spinner'));
+        loading.appendChild(el('span', null, 'Running ' + TEST_COUNT + ' checks on this page…'));
+        elements.body.replaceChildren(loading);
 
         // Let the browser paint the "running" state before the sync scan.
         window.setTimeout(function () {
@@ -188,78 +243,165 @@
 
     /* ------------------------------------------------------------ renderer */
 
+    /* An SVG ring rather than a conic gradient: round line caps, a clean edge
+       at any score, and the sweep can be animated from empty. */
+    function buildRing(report) {
+        var RADIUS = 36;
+        var circumference = 2 * Math.PI * RADIUS;
+
+        var wrap = el('div', 'ssc-ring');
+        var svg = document.createElementNS(SVG_NS, 'svg');
+        svg.setAttribute('class', 'ssc-ring__svg');
+        svg.setAttribute('viewBox', '0 0 84 84');
+        svg.setAttribute('aria-hidden', 'true');
+
+        ['ssc-ring__track', 'ssc-ring__arc'].forEach(function (className) {
+            var circle = document.createElementNS(SVG_NS, 'circle');
+            circle.setAttribute('class', className);
+            circle.setAttribute('cx', '42');
+            circle.setAttribute('cy', '42');
+            circle.setAttribute('r', String(RADIUS));
+            svg.appendChild(circle);
+        });
+
+        var arc = svg.querySelector('.ssc-ring__arc');
+        arc.style.strokeDasharray = circumference + ' ' + circumference;
+        arc.style.strokeDashoffset = String(circumference);   // start empty
+        window.requestAnimationFrame(function () {
+            window.requestAnimationFrame(function () {
+                arc.style.strokeDashoffset = String(circumference * (1 - report.score / 100));
+            });
+        });
+
+        var value = el('div', 'ssc-ring__value');
+        value.appendChild(el('span', 'ssc-ring__score', String(report.score)));
+        value.appendChild(el('span', 'ssc-ring__max', '/ 100'));
+
+        wrap.appendChild(svg);
+        wrap.appendChild(value);
+        return wrap;
+    }
+
+    /* Counts by severity, so the shape of the result is readable at a glance. */
+    function buildTally(report) {
+        var counts = {high: 0, medium: 0, low: 0};
+        report.failed.forEach(function (check) { counts[check.severity]++; });
+
+        var tally = el('div', 'ssc-tally');
+        [
+            {label: 'high', value: counts.high, colour: 'var(--ssc-danger)'},
+            {label: 'medium', value: counts.medium, colour: 'var(--ssc-caution)'},
+            {label: 'low', value: counts.low, colour: 'var(--ssc-text-3)'},
+            {label: 'passed', value: report.passed.length, colour: 'var(--ssc-safe)'}
+        ].forEach(function (entry) {
+            if (!entry.value) { return; }
+            var item = el('span', 'ssc-tally__item');
+            var dot = el('span', 'ssc-tally__dot');
+            dot.style.setProperty('--ssc-dot', entry.colour);
+            item.appendChild(dot);
+            item.appendChild(el('b', null, String(entry.value)));
+            item.appendChild(el('span', null, entry.label));
+            tally.appendChild(item);
+        });
+        return tally;
+    }
+
+    function buildFinding(check) {
+        var item = el('li', 'ssc-item ssc-item--' + check.severity);
+        item.appendChild(el('span', 'ssc-item__dot'));
+
+        var text = el('div', 'ssc-item__text');
+        var row = el('div', 'ssc-item__row');
+        row.appendChild(el('span', 'ssc-item__title', check.title));
+        row.appendChild(el('span', 'ssc-item__points', '\u2212' + check.points));
+        text.appendChild(row);
+        text.appendChild(el('p', 'ssc-item__detail', check.detail));
+
+        item.appendChild(text);
+        return item;
+    }
+
     function renderReport(report) {
         var body = elements.body;
         body.replaceChildren();
 
-        /* verdict block with the score dial */
-        var verdict = el('div', 'ssc-verdict ssc-level--' + report.level);
+        /* verdict */
+        var summary = el('div', 'ssc-summary ssc-level--' + report.level);
+        summary.appendChild(buildRing(report));
 
-        var dial = el('div', 'ssc-dial');
-        dial.style.setProperty('--ssc-score', String(report.score));
-        var dialInner = el('div', 'ssc-dial__inner');
-        dialInner.appendChild(el('span', 'ssc-dial__score', String(report.score)));
-        dialInner.appendChild(el('span', 'ssc-dial__max', '/ 100'));
-        dial.appendChild(dialInner);
+        var text = el('div', 'ssc-summary__text');
+        text.appendChild(el('span', 'ssc-chip', 'Rating ' + report.rating));
+        text.appendChild(el('strong', 'ssc-summary__verdict', report.verdict));
+        text.appendChild(el('span', 'ssc-summary__host', report.host || report.url));
+        summary.appendChild(text);
+        body.appendChild(summary);
 
-        var summary = el('div', 'ssc-verdict__text');
-        summary.appendChild(el('span', 'ssc-verdict__grade', 'Rating ' + report.rating));
-        summary.appendChild(el('strong', 'ssc-verdict__word', report.verdict));
-        summary.appendChild(el('span', 'ssc-verdict__host', report.host || report.url));
-        summary.appendChild(el('span', 'ssc-verdict__count',
-            report.failed.length + ' of ' + report.totalTests + ' tests raised a warning'));
-
-        verdict.appendChild(dial);
-        verdict.appendChild(summary);
-        body.appendChild(verdict);
-
+        body.appendChild(buildTally(report));
         body.appendChild(el('p', 'ssc-url', 'You are on "' + report.url + '"'));
 
         if (report.cappedBy && report.cappedBy.length) {
-            body.appendChild(el('p', 'ssc-cap',
-                'The score is held at ' + report.scoreCap + ' or below because ' +
+            var cap = el('div', 'ssc-cap');
+            cap.appendChild(icon('alert'));
+            cap.appendChild(el('span', null,
+                'The score is held at ' + report.scoreCap + ' or below: ' +
                 report.cappedBy.length + ' finding(s) are conclusive on their own.'));
+            body.appendChild(cap);
         }
 
-        /* failed tests */
+        /* findings */
         if (report.failed.length) {
-            body.appendChild(el('h3', 'ssc-section', 'Warnings'));
+            var section = el('section', 'ssc-section');
+            var title = el('h3', 'ssc-section__title');
+            title.appendChild(el('span', null, 'Findings'));
+            title.appendChild(el('span', 'ssc-count', String(report.failed.length)));
+            section.appendChild(title);
+
             var list = el('ul', 'ssc-list');
-            report.failed.forEach(function (check) {
-                var item = el('li', 'ssc-item ssc-item--' + check.severity);
-                item.appendChild(el('span', 'ssc-item__points', '-' + check.points));
-                var textWrap = el('div', 'ssc-item__text');
-                textWrap.appendChild(el('span', 'ssc-item__title', check.title));
-                textWrap.appendChild(el('span', 'ssc-item__detail', check.detail));
-                item.appendChild(textWrap);
-                list.appendChild(item);
-            });
-            body.appendChild(list);
+            report.failed.forEach(function (check) { list.appendChild(buildFinding(check)); });
+            section.appendChild(list);
+            body.appendChild(section);
         } else {
-            body.appendChild(el('p', 'ssc-clean', 'No warning was raised by any of the ' +
-                report.totalTests + ' tests.'));
+            var clean = el('div', 'ssc-clean');
+            var iconWrap = el('span', 'ssc-clean__icon');
+            iconWrap.appendChild(icon('check', 2.4));
+            clean.appendChild(iconWrap);
+            var cleanText = el('div', 'ssc-clean__text');
+            cleanText.appendChild(el('span', 'ssc-clean__title', 'Nothing to report'));
+            cleanText.appendChild(el('span', 'ssc-clean__note',
+                'All ' + report.passed.length + ' checks that could run on this page passed.'));
+            clean.appendChild(cleanText);
+            body.appendChild(clean);
         }
 
-        /* passed tests, collapsed */
-        var details = el('details', 'ssc-details');
-        details.appendChild(el('summary', 'ssc-details__summary',
-            'Tests passed (' + report.passed.length + ')'));
-        var passedList = el('ul', 'ssc-list ssc-list--passed');
-        report.passed.forEach(function (check) {
-            var item = el('li', 'ssc-item ssc-item--pass');
-            item.appendChild(el('span', 'ssc-item__points', '✓'));
-            var wrap = el('div', 'ssc-item__text');
-            wrap.appendChild(el('span', 'ssc-item__title', check.title));
-            item.appendChild(wrap);
-            passedList.appendChild(item);
-        });
-        details.appendChild(passedList);
-        body.appendChild(details);
+        /* passed tests, folded away */
+        if (report.passed.length) {
+            var details = el('details', 'ssc-disclosure');
+            var disclosure = el('summary', 'ssc-disclosure__summary');
+            var chevron = icon('chevron');
+            chevron.setAttribute('class', 'ssc-disclosure__chevron');
+            disclosure.appendChild(chevron);
+            disclosure.appendChild(el('span', null, 'Checks passed (' + report.passed.length + ')'));
+            details.appendChild(disclosure);
+
+            var passedList = el('ul', 'ssc-list');
+            report.passed.forEach(function (check) {
+                var item = el('li', 'ssc-item ssc-item--pass');
+                item.appendChild(el('span', 'ssc-item__dot'));
+                var wrap = el('div', 'ssc-item__text');
+                wrap.appendChild(el('span', 'ssc-item__title', check.title));
+                item.appendChild(wrap);
+                passedList.appendChild(item);
+            });
+            details.appendChild(passedList);
+            body.appendChild(details);
+        }
 
         if (report.skipped.length) {
             body.appendChild(el('p', 'ssc-skipped',
-                report.skipped.length + ' test(s) could not run on this page.'));
+                report.skipped.length + ' check(s) could not run on this page.'));
         }
+
+        placePanel();          // the content just changed the panel's height
     }
 
     function updateBadge(report) {
@@ -267,18 +409,46 @@
         badge.hidden = false;
         badge.textContent = report.rating;
         badge.className = 'ssc-button__badge ssc-level--' + report.level;
-        elements.button.classList.add('ssc-button--rated');
+        badge.title = report.verdict + ' - ' + report.score + '/100';
     }
 
     /* -------------------------------------------------------------- panel */
 
-    /* The panel normally opens above the button; if it has been dragged near
-       the top or the left edge, the panel flips so it stays on screen. */
+    /*
+     * Decide which way the report opens.
+     *
+     * The measurements are taken against the host anchor and the panel's own
+     * size, not the button's edges: the button grows with the length of the
+     * URL, so using its left edge flipped the panel to the wrong side on a
+     * narrow window and pushed it off screen. The height is then capped to the
+     * space actually available, so the panel can never overflow the viewport
+     * however far the button has been dragged.
+     */
     function placePanel() {
-        var button = elements.button.getBoundingClientRect();
         var panel = elements.panel;
-        panel.classList.toggle('ssc-panel--below', button.top < 380);
-        panel.classList.toggle('ssc-panel--left', button.left < 380);
+        panel.classList.remove('ssc-panel--below', 'ssc-panel--left');
+        panel.style.maxHeight = '';
+
+        var OFFSET = 46;                // the gap the stylesheet leaves for the button
+        var MARGIN = 12;                // breathing room against the window edge
+        var anchor = elements.host.getBoundingClientRect();   // zero-sized corner
+        var size = panel.getBoundingClientRect();
+        var width = size.width || 384;
+        var height = size.height || 420;
+
+        var roomAbove = (anchor.bottom - OFFSET) - MARGIN;
+        var roomBelow = window.innerHeight - (anchor.top + OFFSET) - MARGIN;
+        var openBelow = roomAbove < height && roomBelow > roomAbove;
+        panel.classList.toggle('ssc-panel--below', openBelow);
+
+        // The panel hangs to the left of the anchor unless there is no room.
+        var roomLeft = anchor.left;
+        var roomRight = window.innerWidth - anchor.right;
+        panel.classList.toggle('ssc-panel--left', roomLeft < width && roomRight > roomLeft);
+
+        var room = openBelow ? roomBelow : roomAbove;
+        var ceiling = Math.min(640, window.innerHeight - 24);
+        panel.style.maxHeight = Math.round(clamp(room, Math.min(200, ceiling), ceiling)) + 'px';
     }
 
     function togglePanel() {
@@ -424,6 +594,7 @@
                 bottom: clamp(position.bottom, 8, Math.max(8, window.innerHeight - size.height - 8))
             });
             avoidBottomBar();
+            if (!elements.panel.hidden) { placePanel(); }
         });
     }
 
@@ -479,7 +650,6 @@
             lastReport = null;
             updateLabel();
             elements.badge.hidden = true;
-            elements.button.classList.remove('ssc-button--rated');
             if (!elements.panel.hidden) { runTests(true); }
         };
 
