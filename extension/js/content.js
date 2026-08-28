@@ -69,7 +69,8 @@
         /* ---- Part 1: the embedded button --------------------------------- */
         var button = el('button', 'ssc-button');
         button.type = 'button';
-        button.title = 'You are on ' + location.href + '\nClick to run the spam / safety test';
+        button.title = 'You are on ' + location.href +
+            '\nClick to run the spam / safety test (Alt+Shift+S)';
         button.setAttribute('aria-haspopup', 'dialog');
 
         var shield = el('span', 'ssc-button__icon', '🛡');
@@ -120,6 +121,11 @@
         rerun.addEventListener('click', function () { runTests(true); });
         document.addEventListener('keydown', function (event) {
             if (event.key === 'Escape' && !panel.hidden) { hidePanel(); }
+            // Alt+Shift+S opens the report without reaching for the mouse.
+            if (event.altKey && event.shiftKey && (event.key === 'S' || event.key === 's')) {
+                event.preventDefault();
+                togglePanel();
+            }
         });
     }
 
@@ -128,11 +134,19 @@
     function runTests(force) {
         if (lastReport && !force) { return lastReport; }
 
-        elements.body.replaceChildren(el('p', 'ssc-loading', 'Running 33 safety tests on this page…'));
+        var testCount = (window.SpamAnalyzer && window.SpamAnalyzer.checks)
+            ? window.SpamAnalyzer.checks.length : 0;
+        elements.body.replaceChildren(el('p', 'ssc-loading',
+            'Running ' + testCount + ' safety tests on this page…'));
 
         // Let the browser paint the "running" state before the sync scan.
         window.setTimeout(function () {
             var report;
+            if (!window.SpamAnalyzer || typeof window.SpamAnalyzer.analyze !== 'function') {
+                elements.body.replaceChildren(el('p', 'ssc-loading',
+                    'The analyser did not load. Reload the extension and try again.'));
+                return;
+            }
             try {
                 report = window.SpamAnalyzer.analyze({url: location.href, document: document});
             } catch (error) {
@@ -171,8 +185,10 @@
 
         var dial = el('div', 'ssc-dial');
         dial.style.setProperty('--ssc-score', String(report.score));
-        dial.appendChild(el('span', 'ssc-dial__score', String(report.score)));
-        dial.appendChild(el('span', 'ssc-dial__max', '/100'));
+        var dialInner = el('div', 'ssc-dial__inner');
+        dialInner.appendChild(el('span', 'ssc-dial__score', String(report.score)));
+        dialInner.appendChild(el('span', 'ssc-dial__max', '/ 100'));
+        dial.appendChild(dialInner);
 
         var summary = el('div', 'ssc-verdict__text');
         summary.appendChild(el('span', 'ssc-verdict__grade', 'Rating ' + report.rating));
@@ -186,6 +202,12 @@
         body.appendChild(verdict);
 
         body.appendChild(el('p', 'ssc-url', 'You are on "' + report.url + '"'));
+
+        if (report.cappedBy && report.cappedBy.length) {
+            body.appendChild(el('p', 'ssc-cap',
+                'The score is held at ' + report.scoreCap + ' or below because ' +
+                report.cappedBy.length + ' finding(s) are conclusive on their own.'));
+        }
 
         /* failed tests */
         if (report.failed.length) {
@@ -254,6 +276,50 @@
         elements.button.setAttribute('aria-expanded', 'false');
     }
 
+    /* ------------------------------------------- single page app navigation */
+
+    /*
+     * Many sites change the address without loading a new document, which
+     * would leave the button showing a stale URL and a rating that belongs to
+     * the previous view. Watch for that and reset.
+     */
+    function watchNavigation() {
+        var current = location.href;
+
+        var onChange = function () {
+            if (location.href === current) { return; }
+            current = location.href;
+            lastReport = null;
+            updateLabel();
+            elements.badge.hidden = true;
+            elements.button.classList.remove('ssc-button--rated');
+            if (!elements.panel.hidden) { runTests(true); }
+        };
+
+        window.addEventListener('popstate', onChange);
+        window.addEventListener('hashchange', onChange);
+
+        ['pushState', 'replaceState'].forEach(function (name) {
+            var original = history[name];
+            if (typeof original !== 'function') { return; }
+            history[name] = function () {
+                var result = original.apply(this, arguments);
+                window.setTimeout(onChange, 0);
+                return result;
+            };
+        });
+
+        // Belt and braces: some routers change the URL in ways the hooks miss.
+        window.setInterval(onChange, 1500);
+    }
+
+    function updateLabel() {
+        var label = shadow.querySelector('.ssc-button__url');
+        if (label) { label.textContent = '"' + shortUrl(location.href) + '"'; }
+        elements.button.title = 'You are on ' + location.href +
+            '\nClick to run the spam / safety test (Alt+Shift+S)';
+    }
+
     /* ------------------------------------------------- popup / preferences */
 
     function applyVisibility(visible) {
@@ -290,6 +356,7 @@
 
     function start() {
         buildUi();
+        watchNavigation();
         try {
             chrome.storage.sync.get({showButton: true}, function (prefs) {
                 applyVisibility(prefs.showButton);

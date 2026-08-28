@@ -6,7 +6,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const SpamAnalyzer = require('../src/spam-analyzer.js');
+const SpamAnalyzer = require('../extension/js/spam-analyzer.js');
 
 function idsOf(report) {
     return report.failed.map((check) => check.id);
@@ -68,6 +68,96 @@ test('an unparsable address is reported instead of throwing', () => {
     const report = SpamAnalyzer.analyze('not a url at all');
     assert.strictEqual(report.score, 0);
     assert.ok(report.error);
+});
+
+/* ------------------------------------------------- tests added in v1.1 */
+
+test('a typo-squatted brand domain is capped into the F band', () => {
+    const report = SpamAnalyzer.analyze('https://paypa1.com/login');
+    assert.ok(idsOf(report).includes('typosquat-brand'));
+    assert.ok(report.score <= 30, `expected the cap to bite, got ${report.score}`);
+    assert.strictEqual(report.rating, 'F');
+    assert.ok(report.cappedBy.includes('typosquat-brand'));
+});
+
+test('the real brand domain is never flagged as a typo-squat', () => {
+    const report = SpamAnalyzer.analyze('https://www.paypal.com/signin');
+    assert.strictEqual(report.score, 100);
+    assert.deepStrictEqual(idsOf(report), []);
+});
+
+test('a domain ending hidden in the sub-domain is detected', () => {
+    const ids = idsOf(SpamAnalyzer.analyze('https://paypal.com.secure-verify.tk/login'));
+    assert.ok(ids.includes('tld-in-subdomain'));
+    assert.ok(ids.includes('brand-impersonation'));
+});
+
+test('a mixed-alphabet host is detected as a homograph', () => {
+    // "paypal" with a Cyrillic "а"
+    const report = SpamAnalyzer.analyze('https://p\u0430ypal.com/');
+    assert.ok(idsOf(report).includes('mixed-scripts'));
+    assert.strictEqual(report.rating, 'F');
+});
+
+test('an open redirect parameter is detected', () => {
+    const ids = idsOf(SpamAnalyzer.analyze('https://example.com/go?url=https://evil.example.tk/x'));
+    assert.ok(ids.includes('redirect-param'));
+});
+
+test('a machine generated domain is detected, a readable one is not', () => {
+    assert.ok(idsOf(SpamAnalyzer.analyze('https://xkqzrtvbnmwq.com/')).includes('random-domain'));
+    assert.ok(!idsOf(SpamAnalyzer.analyze('https://riverside-library.com/')).includes('random-domain'));
+});
+
+test('an ordinary page mentioning a brand is not flagged', () => {
+    // The brand test must not fire on /blog/how-to-use-google-analytics.
+    const report = SpamAnalyzer.analyze('https://blog.example.com/how-to-use-google-analytics');
+    assert.strictEqual(report.score, 100);
+});
+
+test('non web schemes are reported', () => {
+    const ids = idsOf(SpamAnalyzer.analyze('ftp://files.example.com/pub/x'));
+    assert.ok(ids.includes('unsafe-scheme'));
+});
+
+test('every check has a unique id, a fail title and a positive weight', () => {
+    const ids = SpamAnalyzer.checks.map((check) => check.id);
+    assert.strictEqual(new Set(ids).size, ids.length, 'duplicate check id');
+    SpamAnalyzer.checks.forEach((check) => {
+        assert.ok(check.failTitle, `${check.id} has no failTitle`);
+        assert.ok(check.title, `${check.id} has no title`);
+        assert.ok(check.weight > 0, `${check.id} has no weight`);
+        assert.strictEqual(typeof check.run, 'function');
+        if (check.cap !== undefined) {
+            assert.ok(check.cap >= 0 && check.cap <= 100, `${check.id} has a silly cap`);
+        }
+    });
+});
+
+test('the report bookkeeping always adds up', () => {
+    const report = SpamAnalyzer.analyze('http://192.168.1.1/login');
+    assert.strictEqual(
+        report.passed.length + report.failed.length + report.skipped.length,
+        report.totalTests
+    );
+    assert.strictEqual(report.totalTests, SpamAnalyzer.checks.length);
+    assert.ok(report.penalty <= report.maxPenalty);
+});
+
+test('failed checks are sorted by severity, worst first', () => {
+    const report = SpamAnalyzer.analyze('http://paypal.secure-login.verify-account.tk/webscr?cmd=login');
+    const points = report.failed.map((check) => check.points);
+    assert.deepStrictEqual(points, [...points].sort((a, b) => b - a));
+});
+
+test('odd inputs never throw', () => {
+    const inputs = ['', null, undefined, 'http://', 'https://.', 'javascript:alert(1)',
+                    'data:text/html,<h1>hi</h1>', 'http://[::1]:8080/', 'HTTPS://EXAMPLE.COM/'];
+    inputs.forEach((input) => {
+        const report = SpamAnalyzer.analyze(input);
+        assert.ok(typeof report.score === 'number' && report.score >= 0 && report.score <= 100,
+            `bad score for input ${JSON.stringify(input)}`);
+    });
 });
 
 test('score always stays within 0..100', () => {

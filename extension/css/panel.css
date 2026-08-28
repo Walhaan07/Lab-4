@@ -163,9 +163,6 @@
     --ssc-colour: #64748b;
     position: relative;
     flex: 0 0 auto;
-    display: flex;
-    align-items: baseline;
-    justify-content: center;
     width: 76px;
     height: 76px;
     border-radius: 50%;
@@ -173,16 +170,22 @@
     color: #0f172a;
 }
 
-.ssc-dial::after {
-    content: "";
+/* The number is centred inside its own disc rather than laid out as a row in
+   the ring: that keeps 0, 87 and 100 all optically centred. */
+.ssc-dial__inner {
     position: absolute;
     inset: 7px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
     border-radius: 50%;
     background: #fff;
+    line-height: 1;
 }
 
-.ssc-dial__score { position: relative; z-index: 1; font-size: 22px; font-weight: 800; }
-.ssc-dial__max   { position: relative; z-index: 1; font-size: 11px; color: #64748b; }
+.ssc-dial__score { font-size: 21px; font-weight: 800; letter-spacing: -.5px; }
+.ssc-dial__max   { margin-top: 3px; font-size: 9px; font-weight: 600; color: #64748b; letter-spacing: .2px; }
 
 .ssc-level--safe    .ssc-dial { --ssc-colour: var(--ssc-safe); }
 .ssc-level--ok      .ssc-dial { --ssc-colour: var(--ssc-ok); }
@@ -256,6 +259,16 @@
 .ssc-item__title { font-weight: 600; font-size: 12px; }
 .ssc-item__detail { color: #475569; font-size: 11.5px; word-break: break-word; }
 
+.ssc-cap {
+    margin: 8px 0 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border-left: 3px solid var(--ssc-danger);
+    background: #fef2f2;
+    color: #7f1d1d;
+    font-size: 11.5px;
+}
+
 .ssc-clean { margin: 12px 0 0; padding: 10px; border-radius: 9px; background: #f0fdf4; color: #14532d; }
 .ssc-loading { margin: 0; padding: 22px 6px; text-align: center; color: #64748b; }
 .ssc-skipped { margin: 10px 0 0; color: #94a3b8; font-size: 11px; }
@@ -268,7 +281,7 @@
     .ssc-panel { background: #0f172a; color: #e2e8f0; }
     .ssc-panel__foot { background: #111c33; border-top-color: #1e293b; }
     .ssc-verdict { background: #111c33; border-color: #1e293b; }
-    .ssc-dial::after { background: #0f172a; }
+    .ssc-dial__inner { background: #0f172a; }
     .ssc-dial__score { color: #f8fafc; }
     .ssc-item { background: #111c33; }
     .ssc-item--high { background: #2a1216; }
@@ -278,4 +291,5 @@
     .ssc-url { background: #1e1b4b; color: #c7d2fe; }
     .ssc-btn { background: #1e293b; color: #e2e8f0; border-color: #334155; }
     .ssc-clean { background: #10231a; color: #bbf7d0; }
+    .ssc-cap { background: #2a1216; color: #fecaca; }
 }

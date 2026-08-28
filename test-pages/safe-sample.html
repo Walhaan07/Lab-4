@@ -5,21 +5,38 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="A well behaved sample page used to test the Site Safety Checker extension.">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>&#128218;</text></svg>">
-    <link rel="stylesheet" href="css/style.css">
     <title>Riverside Community Library</title>
+    <style>
+        :root { color-scheme: light dark; }
+        body { margin: 0; background: #f1f5f9; color: #0f172a;
+               font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+        .wrap { width: min(760px, 100% - 40px); margin-inline: auto; }
+        header { padding: 44px 0 34px; background: linear-gradient(135deg, #4f46e5, #7c3aed); color: #fff; }
+        header p.eyebrow { margin: 0 0 6px; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; opacity: .8; }
+        h1 { margin: 0 0 8px; font-size: 32px; }
+        main { padding: 26px 0 40px; display: flex; flex-direction: column; gap: 18px; }
+        section { padding: 20px; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; }
+        h2 { margin: 0 0 8px; font-size: 18px; }
+        a { color: #4f46e5; }
+        footer { padding: 20px 0 34px; color: #64748b; font-size: 13px; }
+        @media (prefers-color-scheme: dark) {
+            body { background: #0b1220; color: #e2e8f0; }
+            section { background: #111c33; border-color: #1e293b; }
+        }
+    </style>
 </head>
 <body>
-<header class="page-head">
+<header>
     <div class="wrap">
         <p class="eyebrow">Sample page &middot; expected rating A</p>
         <h1>Riverside Community Library</h1>
-        <p class="lead">An ordinary, well behaved page. Press the extension button and the scan should
-            report no warnings, or only very minor ones.</p>
+        <p>An ordinary, well behaved page. Press the extension button: the scan should report no
+           warnings at all when this page is opened over HTTPS.</p>
     </div>
 </header>
 
 <main class="wrap">
-    <section class="card">
+    <section>
         <h2>Opening hours</h2>
         <p>The library is open Monday to Friday from 9am to 6pm, and on Saturday from 10am to 4pm.
            Members can renew loans at the desk or through the self service machines in the lobby.</p>
@@ -27,26 +44,24 @@
            collection is kept on the second floor and may be consulted on request.</p>
     </section>
 
-    <section class="card">
+    <section>
         <h2>Events this month</h2>
-        <ul class="links">
+        <ul>
             <li>Tuesday reading group &mdash; short stories by regional authors.</li>
             <li>Thursday coding club for children aged 9 to 14.</li>
             <li>Saturday morning story time in the children&rsquo;s corner.</li>
         </ul>
     </section>
 
-    <section class="card">
+    <section>
         <h2>Contact us</h2>
         <p>Write to <a href="mailto:desk@riverside-library.example">desk@riverside-library.example</a>
            or call the front desk during opening hours. Our privacy notice explains what we store
            about borrowers and for how long.</p>
-        <p><a href="index.html">Back to the Demo 4 page</a></p>
+        <p><a href="spam-sample.html">Open the mock spam page</a></p>
     </section>
 </main>
 
-<footer class="page-foot">
-    <div class="wrap"><p>Riverside Community Library &middot; about &middot; contact &middot; privacy</p></div>
-</footer>
+<footer class="wrap"><p>Riverside Community Library &middot; about &middot; contact &middot; privacy</p></footer>
 </body>
 </html>
