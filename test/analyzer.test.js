@@ -120,6 +120,23 @@ test('non web schemes are reported', () => {
     assert.ok(ids.includes('unsafe-scheme'));
 });
 
+test('every check explains itself in a few plain-English sentences', () => {
+    SpamAnalyzer.checks.forEach((check) => {
+        assert.ok(check.about, `${check.id} has no explanation`);
+        assert.ok(check.about.length >= 120,
+            `${check.id}'s explanation is too short (${check.about.length} chars)`);
+        assert.ok(check.about.length <= 420,
+            `${check.id}'s explanation is too long (${check.about.length} chars)`);
+        assert.ok(/[.!?]$/.test(check.about.trim()), `${check.id}'s explanation is not a sentence`);
+    });
+});
+
+test('the explanation is carried into the report', () => {
+    const report = SpamAnalyzer.analyze('http://paypal.secure-login.verify-account.tk/webscr');
+    assert.ok(report.failed.every((check) => typeof check.about === 'string' && check.about.length > 0));
+    assert.ok(report.passed.every((check) => typeof check.about === 'string' && check.about.length > 0));
+});
+
 test('every check has a unique id, a fail title and a positive weight', () => {
     const ids = SpamAnalyzer.checks.map((check) => check.id);
     assert.strictEqual(new Set(ids).size, ids.length, 'duplicate check id');

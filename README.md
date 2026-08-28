@@ -119,9 +119,19 @@ because many sites pin their own bar down there.
 
 ## 4. Part 2 — the spam test and the safety rating
 
-Pressing the button (or **Alt+Shift+S**) runs all 49 tests and opens a report showing the
-score, the letter rating, every warning with its penalty, and the tests that passed. The
-rating also appears on the button and on the toolbar icon badge.
+Pressing the button (or **Alt+Shift+S**) runs all 49 checks and opens a report showing the
+score, the letter rating, every finding with its penalty, and the checks that passed.
+
+**The button carries the verdict.** Once a page has been rated the pill takes the colour of
+the result — a cyan-teal gradient for a safe site, amber and orange in between, and a deep red
+for one that fails — so the answer is readable without opening anything. The score ring uses
+the same gradient, while the rest of the panel stays neutral: a saturated wash behind body
+text would cost more in readability than it gains.
+
+**Every check explains itself.** Click any row, passed or failed, and it expands to say what
+that check looks for and why it matters, in three or four sentences of plain English. The rows
+are `<details>` elements, so the keyboard and screen-reader behaviour comes from the element
+rather than from extra code. The rating also appears on the toolbar icon badge.
 
 ### The interface
 
@@ -136,6 +146,10 @@ ring, the rating badge and the findings all share.
   from rendered pixels it ranges from 10.8:1 (dark theme over a light page) to 18.9:1.
 * **The score ring** is an SVG arc with round caps that sweeps up to the score, rather than a
   conic gradient, which cannot round its ends and shows a hard seam.
+* **The verdict gradients** are picked so the text on them keeps its contrast: the cyan, amber
+  and orange ramps are bright and take dark ink, while the red ramp is deep enough to take
+  white. Measured from rendered pixels, the safe pill reads at 9.1:1 and the unsafe pill at
+  6.3:1.
 * **Motion** is limited to a short panel entrance and the ring sweep, and both are dropped
   entirely under `prefers-reduced-motion`.
 * **Keyboard and screen readers.** Alt+Shift+S opens the report and Escape closes it, every

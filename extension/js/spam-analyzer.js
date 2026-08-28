@@ -410,6 +410,11 @@
         /* ---------------------------- URL / transport level tests (1 - 16) */
         {
             id: 'https',
+            about: 'Without HTTPS everything you type travels in plain text, so anyone sharing the ' +
+                   'network - a cafe hotspot, the building\'s router - can read it or change the ' +
+                   'page on its way to you. Encryption also proves you reached the real server ' +
+                   'rather than one pretending to be it. There is no longer a good reason for a ' +
+                   'public site to go without it.',
             title: 'Encrypted connection (HTTPS)',
             failTitle: 'Connection is not encrypted',
             category: 'Transport',
@@ -424,6 +429,10 @@
         },
         {
             id: 'ip-host',
+            about: 'Real sites almost always have a domain name, because a name is what customers ' +
+                   'remember and what a company registers. A bare IP address usually means a ' +
+                   'machine set up quickly and anonymously, or a legitimate machine that has been ' +
+                   'taken over and is being used to host something else.',
             title: 'Host name instead of raw IP address',
             failTitle: 'Site is addressed by a raw IP address',
             category: 'URL',
@@ -436,6 +445,10 @@
         },
         {
             id: 'punycode',
+            about: 'Domain names may contain non-English characters, which are stored in an ' +
+                   'encoded form starting with xn--. That is completely normal for international ' +
+                   'sites, but the same mechanism lets a name be built from letters that only look ' +
+                   'like English ones, so the check shows you what the address really spells.',
             title: 'Domain is plain ASCII',
             failTitle: 'Domain uses international characters',
             category: 'URL',
@@ -448,6 +461,10 @@
         },
         {
             id: 'at-symbol',
+            about: 'Everything before an @ in a web address is treated as a user name and ignored ' +
+                   'when the browser decides which server to contact. That lets an attacker put a ' +
+                   'trusted name on the left and their own server on the right, so a quick glance ' +
+                   'reads as the real site while the connection goes elsewhere.',
             cap: 40,
             title: 'No "@" trick in the address',
             failTitle: 'Address uses the "@" trick',
@@ -462,6 +479,10 @@
         },
         {
             id: 'shortener',
+            about: 'A shortened link hides where it goes until you have already arrived, so you ' +
+                   'cannot judge the destination before the page loads. That is convenient in a ' +
+                   'message with a character limit, and it is also why shorteners are used to slip ' +
+                   'past spam filters and to disguise phishing pages.',
             title: 'Destination is not hidden behind a URL shortener',
             failTitle: 'Destination is hidden behind a URL shortener',
             category: 'URL',
@@ -474,6 +495,10 @@
         },
         {
             id: 'suspicious-tld',
+            about: 'Some domain endings are free or nearly free, with little checking of who ' +
+                   'registers them. Established organisations rarely use them, while spam ' +
+                   'campaigns like them precisely because a domain that costs nothing can be ' +
+                   'abandoned the moment it is blocked and replaced the same day.',
             title: 'Top level domain has a good reputation',
             failTitle: 'Top level domain is frequently abused',
             category: 'URL',
@@ -487,6 +512,10 @@
         },
         {
             id: 'brand-impersonation',
+            about: 'A well known company\'s name appears in the address, but not in the part that ' +
+                   'decides who owns it. Anyone can put a brand in a sub-domain or a path; only ' +
+                   'the registrable domain - the bit immediately before the first single slash - ' +
+                   'actually proves who is running the site.',
             title: 'No brand name used outside the real domain',
             failTitle: 'Brand name used outside the real domain',
             category: 'URL',
@@ -522,6 +551,10 @@
         },
         {
             id: 'many-subdomains',
+            about: 'Every dot adds another level to the name, and a long chain pushes the real ' +
+                   'domain out of view, especially in a phone\'s narrow address bar. Genuine sites ' +
+                   'seldom need more than two or three levels, so a deep chain is often there to ' +
+                   'bury the part that identifies the owner.',
             title: 'Reasonable number of sub-domains',
             failTitle: 'Too many sub-domain levels',
             category: 'URL',
@@ -535,6 +568,9 @@
         },
         {
             id: 'long-url',
+            about: 'A very long address is hard to read, and on a small screen the end of it ' +
+                   'simply is not shown. Padding a URL with filler is a standard way to push the ' +
+                   'real domain past the edge of the address bar so you never see it.',
             title: 'Address is not abnormally long',
             failTitle: 'Address is abnormally long',
             category: 'URL',
@@ -547,6 +583,10 @@
         },
         {
             id: 'hyphen-domain',
+            about: 'A string of hyphens is a typosquatting pattern - names like ' +
+                   'secure-login-account-verify are assembled to look reassuring. A real brand ' +
+                   'normally owns a short domain and does not need to spell out its reassurances ' +
+                   'in the name itself.',
             title: 'Domain does not look typo-squatted',
             failTitle: 'Domain looks typo-squatted',
             category: 'URL',
@@ -561,6 +601,10 @@
         },
         {
             id: 'digits-in-domain',
+            about: 'A domain padded with digits usually comes from a bulk registration or an ' +
+                   'automatic name generator. Spam and malware networks register hundreds of such ' +
+                   'names at once, so that blocking any one of them does not interrupt the ' +
+                   'campaign.',
             title: 'Domain is not made of random digits',
             failTitle: 'Domain is padded with digits',
             category: 'URL',
@@ -575,6 +619,10 @@
         },
         {
             id: 'sensitive-keywords',
+            about: 'Words such as login, verify and account in the address are how a page tries to ' +
+                   'look official before you have read the domain itself. A genuine sign-in page ' +
+                   'usually sits on the company\'s plain domain, and does not need to argue for ' +
+                   'its own legitimacy in the URL.',
             title: 'No credential-harvesting keywords in the address',
             failTitle: 'Credential-harvesting keywords in the address',
             category: 'URL',
@@ -589,6 +637,10 @@
         },
         {
             id: 'nonstandard-port',
+            about: 'Web traffic normally arrives on the standard ports 80 and 443. An unusual port ' +
+                   'often means a service running outside a site\'s ordinary setup, which is ' +
+                   'common on machines that have been compromised and on temporary infrastructure ' +
+                   'put up for a short campaign.',
             title: 'Standard web port',
             failTitle: 'Unusual network port',
             category: 'Transport',
@@ -603,6 +655,10 @@
         },
         {
             id: 'encoded-chars',
+            about: 'Characters in an address can be written as %xx codes, which is normal in small ' +
+                   'amounts for spaces and accents. Heavy encoding is different: it is used to ' +
+                   'disguise words that a filter would block or that a reader would recognise as ' +
+                   'suspicious.',
             title: 'Address is not heavily percent-encoded',
             failTitle: 'Address is heavily percent-encoded',
             category: 'URL',
@@ -616,6 +672,9 @@
         },
         {
             id: 'query-complexity',
+            about: 'A long chain of parameters is not dangerous by itself, but it makes an address ' +
+                   'hard to read at a glance, and it is a common place to carry tracking ' +
+                   'identifiers or to smuggle a second address inside the first.',
             title: 'Simple query string',
             failTitle: 'Unusually complex query string',
             category: 'URL',
@@ -629,6 +688,10 @@
         },
         {
             id: 'executable-url',
+            about: 'The address points straight at a program rather than a page, so following it ' +
+                   'starts a download instead of showing anything. This is the usual delivery ' +
+                   'route for malware sent through links in messages, adverts and fake update ' +
+                   'notices.',
             cap: 50,
             title: 'Address does not point at an executable file',
             failTitle: 'Address points at an executable file',
@@ -645,6 +708,9 @@
 
         {
             id: 'unsafe-scheme',
+            about: 'The page is not being served over ordinary web protocols. Schemes such as ' +
+                   'data: can carry an entire page inside the address itself, which lets content ' +
+                   'run without being hosted anywhere that could be reported or taken down.',
             cap: 45,
             failTitle: 'Page is not loaded from a normal web address',
             title: 'Loaded from a normal web address',
@@ -659,6 +725,10 @@
         },
         {
             id: 'mixed-scripts',
+            about: 'The name mixes alphabets, or is written entirely in another alphabet whose ' +
+                   'letters are drawn like Latin ones. A Cyrillic a is a different character from ' +
+                   'a Latin a, so a domain can read exactly like a household brand while belonging ' +
+                   'to someone else entirely.',
             cap: 30,
             failTitle: 'Domain is a look-alike of another name',
             title: 'Domain is not a look-alike',
@@ -696,6 +766,10 @@
         },
         {
             id: 'typosquat-brand',
+            about: 'The domain is only a character or two away from a well known one - a swapped ' +
+                   'letter, a digit standing in for a letter. Names like this are registered ' +
+                   'deliberately to catch typing mistakes and glances that do not check the ' +
+                   'spelling.',
             cap: 30,
             failTitle: 'Domain is a near-miss of a well known brand',
             title: 'Domain is not a misspelt brand',
@@ -715,6 +789,10 @@
         },
         {
             id: 'tld-in-subdomain',
+            about: 'A domain ending such as .com appears in the middle of the name, so the address ' +
+                   'reads like the real site while the actual domain sits at the end. The owner is ' +
+                   'decided by the part immediately before the first single slash, not by whatever ' +
+                   'comes earlier.',
             cap: 45,
             failTitle: 'A domain ending is buried in the sub-domain',
             title: 'No fake domain ending in the sub-domain',
@@ -733,6 +811,9 @@
         },
         {
             id: 'redirect-param',
+            about: 'The address carries another address inside it as a parameter. Open redirects ' +
+                   'let an attacker borrow a trusted domain for the first hop, so the link looks ' +
+                   'safe where it is posted and quietly hands you on to somewhere that is not.',
             failTitle: 'Address carries another URL as a parameter',
             title: 'No redirect parameter in the address',
             category: 'URL',
@@ -754,6 +835,9 @@
         },
         {
             id: 'random-domain',
+            about: 'The name has the shape of something generated by a program rather than chosen ' +
+                   'by a person. Malware and spam networks create such names in bulk, use each for ' +
+                   'a few days, and move on before anyone gets around to blocking them.',
             failTitle: 'Domain looks machine generated',
             title: 'Domain looks human readable',
             category: 'URL',
@@ -773,6 +857,9 @@
         },
         {
             id: 'hostname-length',
+            about: 'An unusually long host name is hard to take in, and on a phone only the first ' +
+                   'part is visible. Length is used deliberately to push the meaningful portion of ' +
+                   'the name out of sight.',
             failTitle: 'Host name is abnormally long',
             title: 'Host name has a sensible length',
             category: 'URL',
@@ -787,6 +874,10 @@
         /* -------------------------------- page content tests */
         {
             id: 'insecure-password-form',
+            about: 'The page asks for a password while the connection is unencrypted, so the ' +
+                   'password is sent as readable text. Anyone between you and the site - another ' +
+                   'user on the same network, whoever runs it - can capture it, and reused ' +
+                   'passwords then open other accounts too.',
             cap: 40,
             title: 'Passwords are not requested over an insecure page',
             failTitle: 'Password requested over an insecure page',
@@ -803,6 +894,9 @@
         },
         {
             id: 'cross-domain-form',
+            about: 'What you type here is delivered to a different site from the one you are ' +
+                   'looking at. That is the whole mechanic of a phishing page: a familiar looking ' +
+                   'form on screen, someone else\'s server quietly collecting the answers.',
             title: 'Forms submit to this same site',
             failTitle: 'Form submits your data to another site',
             category: 'Forms',
@@ -828,6 +922,9 @@
         },
         {
             id: 'hidden-iframes',
+            about: 'The page loads other pages invisibly. Hidden frames are used to follow you ' +
+                   'between sites, and to float an unseen layer over a button so that your click ' +
+                   'does something other than what the visible page suggests.',
             title: 'No hidden / zero-sized frames',
             failTitle: 'Hidden / zero-sized frames',
             category: 'Content',
@@ -848,6 +945,10 @@
         },
         {
             id: 'third-party-scripts',
+            about: 'Every external script can do anything the page can, including reading what you ' +
+                   'type into it. When code arrives from many different companies, the safety of ' +
+                   'the page depends on all of them at once, not only on the site you chose to ' +
+                   'visit.',
             title: 'Few third party scripts',
             failTitle: 'Many third party scripts',
             category: 'Content',
@@ -869,6 +970,10 @@
         },
         {
             id: 'spam-phrases',
+            about: 'The wording belongs to unsolicited advertising: prizes, guaranteed income, ' +
+                   'miracle cures. Ordinary businesses describe what they sell and what it costs, ' +
+                   'while scams lead with reward and urgency because they need a decision before ' +
+                   'you think it through.',
             title: 'No classic spam wording in the text',
             failTitle: 'Classic spam wording in the text',
             category: 'Content',
@@ -900,6 +1005,9 @@
         },
         {
             id: 'shouty-text',
+            about: 'Blocks of capitals and rows of exclamation marks are the house style of scam ' +
+                   'and low quality advertising pages. Established sites write normally, because ' +
+                   'shouting costs them the trust they are trying to build.',
             title: 'Text is not written in shouting style',
             failTitle: 'Text is written in shouting style',
             category: 'Content',
@@ -920,6 +1028,10 @@
         },
         {
             id: 'obfuscated-js',
+            about: 'The page\'s own scripts are written to be unreadable, for instance assembling ' +
+                   'code from character codes as it runs. Ordinary sites have no reason to hide ' +
+                   'what their code does; hiding it is how malicious code gets past scanners and ' +
+                   'past anyone who looks.',
             title: 'Inline scripts are not obfuscated',
             failTitle: 'Inline scripts look obfuscated',
             category: 'Scripts',
@@ -939,6 +1051,9 @@
         },
         {
             id: 'meta-refresh',
+            about: 'The page moves you somewhere else on its own. Chains of automatic redirects ' +
+                   'are used to launder a link, so that the address you clicked and the address ' +
+                   'you end up on are not the same and only the first one looked safe.',
             title: 'No automatic redirect',
             failTitle: 'Page redirects automatically',
             category: 'Content',
@@ -953,6 +1068,10 @@
         },
         {
             id: 'popup-traps',
+            about: 'The page is trying to keep you on it: blocking the attempt to leave, opening ' +
+                   'extra windows, or disabling the right click menu. Sites that expect you to ' +
+                   'come back let you go; this behaviour belongs to pages that need you to stay ' +
+                   'while they work on you.',
             title: 'No pop-up / leave-page traps',
             failTitle: 'Pop-up / leave-page traps',
             category: 'Scripts',
@@ -969,6 +1088,9 @@
         },
         {
             id: 'hidden-text',
+            about: 'Text is in the page but hidden from view, while search engines still read it. ' +
+                   'This is keyword stuffing, used to get a page ranked for searches it has ' +
+                   'nothing to do with, which is how low quality and scam pages find visitors.',
             title: 'No invisible keyword stuffing',
             failTitle: 'Invisible keyword stuffing',
             category: 'Content',
@@ -996,6 +1118,9 @@
         },
         {
             id: 'external-links',
+            about: 'Almost every link leads off the site. That is the shape of a link farm - a ' +
+                   'page that exists to pass traffic and search ranking elsewhere rather than to ' +
+                   'offer anything of its own.',
             title: 'Links mostly stay on this site',
             failTitle: 'Most links leave this site',
             category: 'Content',
@@ -1020,6 +1145,10 @@
         },
         {
             id: 'site-identity',
+            about: 'The page has no title, icon or description. Everyday sites fill these in ' +
+                   'because they decide how the page looks in tabs, bookmarks and search results, ' +
+                   'so their absence suggests a page generated in bulk rather than made for ' +
+                   'readers.',
             title: 'Page has a proper identity',
             failTitle: 'Page has no proper identity',
             category: 'Content',
@@ -1037,6 +1166,9 @@
         },
         {
             id: 'overlay-ads',
+            about: 'Several floating layers sit on top of the content. Overlays and pop-unders are ' +
+                   'used to force adverts that cannot easily be dismissed, and to catch clicks ' +
+                   'that were meant for the page underneath.',
             title: 'No full screen overlay / pop-under',
             failTitle: 'Full screen overlay / pop-under',
             category: 'Content',
@@ -1058,6 +1190,9 @@
         },
         {
             id: 'auto-download',
+            about: 'The page offers a program file for download. Paired with urgency - your player ' +
+                   'is out of date, your prize is waiting - this is the standard way fake update ' +
+                   'and prize pages persuade people to install something themselves.',
             title: 'No forced file download',
             failTitle: 'Executable file download offered',
             category: 'Downloads',
@@ -1080,6 +1215,9 @@
         },
         {
             id: 'mixed-content',
+            about: 'Parts of an otherwise encrypted page are fetched without encryption. Those ' +
+                   'parts can be read or swapped out in transit, so a single insecure script can ' +
+                   'undo the protection the padlock appears to promise.',
             title: 'No insecure resources on a secure page',
             failTitle: 'Insecure resources on a secure page',
             category: 'Transport',
@@ -1095,6 +1233,9 @@
         },
         {
             id: 'fake-urgency',
+            about: 'Countdowns and only-a-few-left notices are designed to stop you weighing the ' +
+                   'decision. Manufactured deadlines are a standard pressure technique, used by ' +
+                   'outright scams and by aggressive marketing alike.',
             title: 'No artificial time pressure',
             failTitle: 'Artificial time pressure',
             category: 'Content',
@@ -1109,6 +1250,10 @@
         },
         {
             id: 'payment-fields',
+            about: 'The page collects card or identity details. That is expected at a checkout, ' +
+                   'but it is worth noticing when a page asks, and it matters that the connection ' +
+                   'is encrypted and that the domain really belongs to the company you think you ' +
+                   'are paying.',
             failTitle: 'Page asks for card or identity details',
             title: 'No card or identity details requested',
             category: 'Forms',
@@ -1137,6 +1282,10 @@
         },
         {
             id: 'favicon-hotlink',
+            about: 'The small icon shown in the browser tab is loaded from another site. A cloned ' +
+                   'page often keeps the original\'s branding by linking straight to the ' +
+                   'original\'s files, which is a strong sign you are looking at a copy rather ' +
+                   'than the real thing.',
             failTitle: 'Site icon is borrowed from another domain',
             title: 'Site icon is served by this site',
             category: 'Content',
@@ -1159,6 +1308,9 @@
         },
         {
             id: 'title-brand-mismatch',
+            about: 'A sign-in page names one company while the domain belongs to someone else. A ' +
+                   'real login page for a company is served from that company\'s own domain, so ' +
+                   'the two should always agree.',
             cap: 40,
             failTitle: 'Page claims a brand that does not own the domain',
             title: 'Page title matches the domain',
@@ -1181,6 +1333,9 @@
         },
         {
             id: 'deceptive-links',
+            about: 'The visible text of a link shows one address while the link itself goes to ' +
+                   'another. Reading the text is how most people check where a link leads, which ' +
+                   'is exactly why this substitution is worth making.',
             failTitle: 'Link text does not match where the link goes',
             title: 'Link text matches the link target',
             category: 'Content',
@@ -1206,6 +1361,9 @@
         },
         {
             id: 'full-page-iframe',
+            about: 'Nearly the whole page is another site shown inside a frame. It is a quick way ' +
+                   'to clone a site without copying it: the genuine content appears, while the ' +
+                   'surrounding page keeps watch over what you type and click.',
             failTitle: 'Whole page is another site in a frame',
             title: 'Page is not a frame around another site',
             category: 'Content',
@@ -1233,6 +1391,10 @@
         },
         {
             id: 'scareware',
+            about: 'The page claims your device is infected or locked and presses you to call a ' +
+                   'number or act immediately. No web page can inspect your computer, so these ' +
+                   'warnings exist to sell fake support, fake fixes, or access to the machine ' +
+                   'itself.',
             failTitle: 'Page uses scare tactics',
             title: 'No scareware or fake alert wording',
             category: 'Content',
@@ -1261,6 +1423,9 @@
         },
         {
             id: 'crypto-wallet',
+            about: 'A crypto wallet address is shown for payment. Such payments cannot be reversed ' +
+                   'and are hard to trace, which is why giveaway scams, ransom demands and fake ' +
+                   'investment schemes ask for money this way rather than by card.',
             failTitle: 'Page shows a crypto wallet address',
             title: 'No crypto wallet address on the page',
             category: 'Content',
@@ -1278,6 +1443,10 @@
         },
         {
             id: 'permission-abuse',
+            about: 'The page requests browser permissions such as notifications or location the ' +
+                   'moment it loads, rather than when you do something that needs them. ' +
+                   'Notification access in particular is collected so adverts can be pushed to ' +
+                   'your desktop long after you have left.',
             failTitle: 'Page grabs browser permissions on load',
             title: 'No permission prompts on load',
             category: 'Scripts',
@@ -1296,6 +1465,9 @@
         },
         {
             id: 'ad-density',
+            about: 'The page is dominated by advertising containers. Heavy advertising slows the ' +
+                   'page, carries tracking between sites, and is the business model of content ' +
+                   'farms, whose pages exist to hold adverts rather than to inform.',
             failTitle: 'Page is dominated by advertising frames',
             title: 'Reasonable amount of advertising',
             category: 'Content',
@@ -1320,6 +1492,9 @@
         },
         {
             id: 'contact-info',
+            about: 'No contact, about or privacy information could be found. Organisations that ' +
+                   'expect to be held to account say who they are and how to reach them, whereas ' +
+                   'sites built to be disposable rarely bother.',
             title: 'Site provides contact information',
             failTitle: 'No contact information on the page',
             category: 'Content',
@@ -1410,6 +1585,7 @@
             var entry = {
                 id: check.id,
                 title: check.title,          // replaced by failTitle when the test fails
+                about: check.about,          // plain-English explanation for the report
                 category: check.category,
                 weight: check.weight,
                 status: 'passed',

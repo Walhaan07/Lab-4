@@ -125,6 +125,13 @@ window.SSC_PANEL_CSS = `
 }
 
 /* one place to map a verdict onto its colour */
+/*
+ * Each verdict carries a gradient as well as a flat colour. The gradients are
+ * chosen so that the text sitting on them keeps its contrast: the cyan, amber
+ * and orange ramps are bright and take dark ink, while the red ramp is deep
+ * enough to take white. A light gradient with white text would look striking
+ * and be unreadable.
+ */
 .ssc-level--safe    { --ssc-level: var(--ssc-safe);    --ssc-level-ink: var(--ssc-safe-ink);
                       --ssc-level-tint: var(--ssc-tint-safe); }
 .ssc-level--ok      { --ssc-level: var(--ssc-ok);      --ssc-level-ink: var(--ssc-ok-ink);
@@ -136,6 +143,35 @@ window.SSC_PANEL_CSS = `
 .ssc-level--danger  { --ssc-level: var(--ssc-danger);  --ssc-level-ink: var(--ssc-danger-ink);
                       --ssc-level-tint: var(--ssc-tint-danger); }
 
+.ssc-level--safe, .ssc-level--ok {
+    --ssc-grad-1: #0ea5e9;
+    --ssc-grad-2: #22d3ee;
+    --ssc-grad-3: #5eead4;
+    --ssc-pill-ink: #04252c;            /* 5.6:1 on the darkest stop */
+    --ssc-pill-ink-2: rgba(4, 37, 44, .72);
+}
+.ssc-level--caution {
+    --ssc-grad-1: #f59e0b;
+    --ssc-grad-2: #fbbf24;
+    --ssc-grad-3: #fde68a;
+    --ssc-pill-ink: #3b2402;
+    --ssc-pill-ink-2: rgba(59, 36, 2, .72);
+}
+.ssc-level--risky {
+    --ssc-grad-1: #ea580c;
+    --ssc-grad-2: #f97316;
+    --ssc-grad-3: #fb923c;
+    --ssc-pill-ink: #3d1503;
+    --ssc-pill-ink-2: rgba(61, 21, 3, .74);
+}
+.ssc-level--danger {
+    --ssc-grad-1: #7f1d1d;
+    --ssc-grad-2: #b91c1c;
+    --ssc-grad-3: #dc2626;
+    --ssc-pill-ink: #ffffff;            /* 4.5:1 on the lightest stop */
+    --ssc-pill-ink-2: rgba(255, 255, 255, .82);
+}
+
 /* ============================================================ 2. button */
 
 .ssc-button {
@@ -145,16 +181,18 @@ window.SSC_PANEL_CSS = `
     display: inline-flex;
     align-items: center;
     gap: 9px;
-    max-width: 420px;
+    max-width: 460px;
     margin: 0;
-    padding: 8px 10px 8px 12px;
+    padding: 10px 11px 10px 14px;
     border: 1px solid var(--ssc-border-2);
     border-radius: var(--ssc-r-pill);
     background: var(--ssc-glass);
     -webkit-backdrop-filter: blur(16px) saturate(1.6);
     backdrop-filter: blur(16px) saturate(1.6);
     color: var(--ssc-text);
-    font: 500 12.5px/1 var(--ssc-font);
+    /* line-height 1 clipped the descenders of letters such as g and p in the
+       URL, so the text is given room to sit in. */
+    font: 500 13px/1.45 var(--ssc-font);
     letter-spacing: -.005em;
     cursor: grab;
     touch-action: none;
@@ -174,6 +212,26 @@ window.SSC_PANEL_CSS = `
 .ssc-button:active { transform: translateY(0); }
 .ssc-button:focus-visible { outline: none; box-shadow: var(--ssc-shadow-2), var(--ssc-ring); }
 
+/* Once a page has been rated the pill carries the verdict's colour, so the
+   result is readable without opening the report. */
+.ssc-button--rated {
+    background: linear-gradient(120deg, var(--ssc-grad-1), var(--ssc-grad-2) 52%, var(--ssc-grad-3));
+    border-color: rgba(255, 255, 255, .28);
+    color: var(--ssc-pill-ink);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+.ssc-button--rated .ssc-button__lead { color: var(--ssc-pill-ink-2); }
+.ssc-button--rated .ssc-button__mark { color: var(--ssc-pill-ink); }
+.ssc-button--rated:hover { border-color: rgba(255, 255, 255, .55); }
+
+.ssc-button--rated .ssc-button__badge {
+    background: var(--ssc-surface);
+    color: var(--ssc-level-ink);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .22);
+}
+
 .ssc-button--dragging {
     cursor: grabbing;
     transition: none;
@@ -184,8 +242,8 @@ window.SSC_PANEL_CSS = `
 .ssc-button__mark {
     display: inline-flex;
     flex: 0 0 auto;
-    width: 18px;
-    height: 18px;
+    width: 19px;
+    height: 19px;
     color: var(--ssc-accent);
 }
 .ssc-button__mark svg { width: 100%; height: 100%; display: block; }
@@ -193,9 +251,9 @@ window.SSC_PANEL_CSS = `
 .ssc-button__label {
     display: inline-flex;
     align-items: baseline;
-    gap: 5px;
+    gap: 6px;
     min-width: 0;
-    overflow: hidden;
+    line-height: 1.45;      /* keeps descenders inside the clipping box */
 }
 
 .ssc-button__lead { color: var(--ssc-text-3); font-weight: 500; }
@@ -215,12 +273,12 @@ window.SSC_PANEL_CSS = `
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
-    width: 21px;
-    height: 21px;
+    width: 23px;
+    height: 23px;
     border-radius: 50%;
     background: var(--ssc-level, var(--ssc-text-3));
     color: #fff;
-    font-size: 11.5px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 0;
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--ssc-level, #888) 18%, transparent);
@@ -250,6 +308,7 @@ window.SSC_PANEL_CSS = `
 
 .ssc-panel[hidden] { display: none; }
 .ssc-panel--below { top: 46px; bottom: auto; transform-origin: top right; }
+
 .ssc-panel--left  { right: auto; left: 0; transform-origin: bottom left; }
 .ssc-panel--below.ssc-panel--left { transform-origin: top left; }
 
@@ -390,7 +449,7 @@ window.SSC_PANEL_CSS = `
 
 .ssc-ring__arc {
     fill: none;
-    stroke: var(--ssc-level, var(--ssc-accent));
+    stroke: var(--ssc-level, var(--ssc-accent));   /* replaced by the gradient below */
     stroke-width: 7.5;
     stroke-linecap: round;
     transition: stroke-dashoffset .85s var(--ssc-ease);
@@ -527,15 +586,44 @@ window.SSC_PANEL_CSS = `
 .ssc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 
 .ssc-item {
-    display: flex;
-    gap: 10px;
-    padding: 10px 11px;
     border: 1px solid var(--ssc-border);
     border-radius: var(--ssc-r-md);
     background: var(--ssc-surface);
     transition: border-color .15s var(--ssc-ease), background .15s var(--ssc-ease);
 }
-.ssc-item:hover { border-color: var(--ssc-border-2); background: var(--ssc-surface-2); }
+.ssc-item:hover { border-color: var(--ssc-border-2); }
+
+/* the whole row is the control that opens the explanation */
+.ssc-item__summary {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 10px 11px;
+    border-radius: var(--ssc-r-md);
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+}
+.ssc-item__summary::-webkit-details-marker { display: none; }
+.ssc-item__summary:focus-visible { outline: none; box-shadow: var(--ssc-ring); }
+
+.ssc-item__chevron {
+    flex: 0 0 auto;
+    width: 13px;
+    height: 13px;
+    margin-top: 3px;
+    color: var(--ssc-text-3);
+    transition: transform .2s var(--ssc-ease);
+}
+.ssc-item__box[open] > .ssc-item__summary > .ssc-item__chevron { transform: rotate(90deg); }
+
+.ssc-item__about {
+    padding: 0 12px 11px 29px;
+    color: var(--ssc-text-2);
+    font-size: 11.5px;
+    line-height: 1.6;
+}
+.ssc-item__about p { margin: 0; padding-top: 9px; border-top: 1px solid var(--ssc-border); }
 
 .ssc-item--high   { --ssc-dot: var(--ssc-danger); --ssc-ink: var(--ssc-danger-ink);
                     background: var(--ssc-tint-danger);
@@ -544,7 +632,8 @@ window.SSC_PANEL_CSS = `
                     background: var(--ssc-tint-caution);
                     border-color: color-mix(in srgb, var(--ssc-caution) 22%, transparent); }
 .ssc-item--low    { --ssc-dot: var(--ssc-text-3); --ssc-ink: var(--ssc-text-2); }
-.ssc-item--pass   { --ssc-dot: var(--ssc-safe); --ssc-ink: var(--ssc-safe-ink); padding: 7px 11px; }
+.ssc-item--pass   { --ssc-dot: var(--ssc-safe); --ssc-ink: var(--ssc-safe-ink); }
+.ssc-item--pass .ssc-item__summary { padding: 8px 11px; }
 
 .ssc-item__dot {
     flex: 0 0 auto;
@@ -647,7 +736,8 @@ window.SSC_PANEL_CSS = `
     .ssc-panel { animation: none; }
     .ssc-ring__arc { transition: none; }
     .ssc-spinner { animation-duration: 2s; }
-    .ssc-button, .ssc-item, .ssc-btn, .ssc-icon-btn { transition: none; }
+    .ssc-button, .ssc-item, .ssc-btn, .ssc-icon-btn,
+    .ssc-item__chevron, .ssc-disclosure__chevron { transition: none; }
 }
 
 `;

@@ -255,6 +255,26 @@
         svg.setAttribute('viewBox', '0 0 84 84');
         svg.setAttribute('aria-hidden', 'true');
 
+        /* The arc is painted with the same gradient as the button, so the
+           score and the pill read as one result. The id only has to be unique
+           inside this shadow root. */
+        var gradientId = 'ssc-arc-gradient';
+        var defs = document.createElementNS(SVG_NS, 'defs');
+        var gradient = document.createElementNS(SVG_NS, 'linearGradient');
+        gradient.setAttribute('id', gradientId);
+        gradient.setAttribute('x1', '0'); gradient.setAttribute('y1', '0');
+        gradient.setAttribute('x2', '1'); gradient.setAttribute('y2', '1');
+        [['0%', 'var(--ssc-grad-1, var(--ssc-level))'],
+         ['52%', 'var(--ssc-grad-2, var(--ssc-level))'],
+         ['100%', 'var(--ssc-grad-3, var(--ssc-level))']].forEach(function (pair) {
+            var stop = document.createElementNS(SVG_NS, 'stop');
+            stop.setAttribute('offset', pair[0]);
+            stop.style.stopColor = pair[1];
+            gradient.appendChild(stop);
+        });
+        defs.appendChild(gradient);
+        svg.appendChild(defs);
+
         ['ssc-ring__track', 'ssc-ring__arc'].forEach(function (className) {
             var circle = document.createElementNS(SVG_NS, 'circle');
             circle.setAttribute('class', className);
@@ -265,6 +285,10 @@
         });
 
         var arc = svg.querySelector('.ssc-ring__arc');
+        /* Inline style, not a presentation attribute: the stylesheet's own
+           stroke rule would otherwise win and the gradient be ignored. That
+           rule stays as the fallback if the gradient cannot be resolved. */
+        arc.style.stroke = 'url(#' + gradientId + ')';
         arc.style.strokeDasharray = circumference + ' ' + circumference;
         arc.style.strokeDashoffset = String(circumference);   // start empty
         window.requestAnimationFrame(function () {
@@ -306,18 +330,43 @@
         return tally;
     }
 
-    function buildFinding(check) {
-        var item = el('li', 'ssc-item ssc-item--' + check.severity);
-        item.appendChild(el('span', 'ssc-item__dot'));
+    /*
+     * Every check is a <details>: the row shows what was found, and opening it
+     * explains what the check looks for and why it matters. <details> is used
+     * rather than a click handler so it works with the keyboard and with a
+     * screen reader without any extra wiring.
+     */
+    function buildCheckItem(check, options) {
+        options = options || {};
+        var item = el('li', 'ssc-item ssc-item--' + (options.severity || check.severity));
+        var box = el('details', 'ssc-item__box');
+        var summary = el('summary', 'ssc-item__summary');
+
+        summary.appendChild(el('span', 'ssc-item__dot'));
 
         var text = el('div', 'ssc-item__text');
         var row = el('div', 'ssc-item__row');
         row.appendChild(el('span', 'ssc-item__title', check.title));
-        row.appendChild(el('span', 'ssc-item__points', '\u2212' + check.points));
+        if (options.showPoints) {
+            row.appendChild(el('span', 'ssc-item__points', '\u2212' + check.points));
+        }
         text.appendChild(row);
-        text.appendChild(el('p', 'ssc-item__detail', check.detail));
+        if (options.showDetail && check.detail && check.detail !== 'OK') {
+            text.appendChild(el('p', 'ssc-item__detail', check.detail));
+        }
+        summary.appendChild(text);
 
-        item.appendChild(text);
+        var chevron = icon('chevron');
+        chevron.setAttribute('class', 'ssc-item__chevron');
+        summary.appendChild(chevron);
+
+        box.appendChild(summary);
+
+        var about = el('div', 'ssc-item__about');
+        about.appendChild(el('p', null, check.about || 'No further detail is available for this check.'));
+        box.appendChild(about);
+
+        item.appendChild(box);
         return item;
     }
 
@@ -357,7 +406,9 @@
             section.appendChild(title);
 
             var list = el('ul', 'ssc-list');
-            report.failed.forEach(function (check) { list.appendChild(buildFinding(check)); });
+            report.failed.forEach(function (check) {
+                list.appendChild(buildCheckItem(check, {showPoints: true, showDetail: true}));
+            });
             section.appendChild(list);
             body.appendChild(section);
         } else {
@@ -385,12 +436,7 @@
 
             var passedList = el('ul', 'ssc-list');
             report.passed.forEach(function (check) {
-                var item = el('li', 'ssc-item ssc-item--pass');
-                item.appendChild(el('span', 'ssc-item__dot'));
-                var wrap = el('div', 'ssc-item__text');
-                wrap.appendChild(el('span', 'ssc-item__title', check.title));
-                item.appendChild(wrap);
-                passedList.appendChild(item);
+                passedList.appendChild(buildCheckItem(check, {severity: 'pass'}));
             });
             details.appendChild(passedList);
             body.appendChild(details);
@@ -401,7 +447,27 @@
                 report.skipped.length + ' check(s) could not run on this page.'));
         }
 
+        // Opening a check changes the height, so the panel is placed again.
+        body.addEventListener('toggle', function (event) {
+            if (event.target && event.target.classList.contains('ssc-item__box')) { placePanel(); }
+        }, true);
+
         placePanel();          // the content just changed the panel's height
+    }
+
+    var LEVEL_CLASSES = ['ssc-level--safe', 'ssc-level--ok', 'ssc-level--caution',
+                         'ssc-level--risky', 'ssc-level--danger'];
+
+    /* classList rather than className: the drag handler also owns a class on
+       this element, and replacing the whole attribute would drop it. */
+    function setButtonLevel(level) {
+        var button = elements.button;
+        LEVEL_CLASSES.forEach(function (name) { button.classList.remove(name); });
+        if (level) {
+            button.classList.add('ssc-button--rated', 'ssc-level--' + level);
+        } else {
+            button.classList.remove('ssc-button--rated');
+        }
     }
 
     function updateBadge(report) {
@@ -410,6 +476,7 @@
         badge.textContent = report.rating;
         badge.className = 'ssc-button__badge ssc-level--' + report.level;
         badge.title = report.verdict + ' - ' + report.score + '/100';
+        setButtonLevel(report.level);
     }
 
     /* -------------------------------------------------------------- panel */
@@ -428,23 +495,42 @@
         var panel = elements.panel;
         panel.classList.remove('ssc-panel--below', 'ssc-panel--left');
         panel.style.maxHeight = '';
+        panel.style.top = '';
+        panel.style.bottom = '';
 
-        var OFFSET = 46;                // the gap the stylesheet leaves for the button
         var MARGIN = 12;                // breathing room against the window edge
         var anchor = elements.host.getBoundingClientRect();   // zero-sized corner
-        var size = panel.getBoundingClientRect();
-        var width = size.width || 384;
-        var height = size.height || 420;
+        var button = elements.button.getBoundingClientRect();
+        // Measured from the button rather than hard coded, so the panel keeps
+        // its distance if the button's size ever changes.
+        var gap = Math.round(button.height) + 9;
+        /*
+         * offsetWidth/offsetHeight, not getBoundingClientRect: the panel's
+         * entrance animation starts at scale(.98), and a rect measured mid
+         * animation reported the panel ~8px narrower than it really is, which
+         * was enough to skip the flip and leave it hanging off the edge.
+         */
+        var width = panel.offsetWidth || 384;
+        var height = panel.offsetHeight || 420;
 
-        var roomAbove = (anchor.bottom - OFFSET) - MARGIN;
-        var roomBelow = window.innerHeight - (anchor.top + OFFSET) - MARGIN;
+        var roomAbove = (anchor.bottom - gap) - MARGIN;
+        var roomBelow = window.innerHeight - (anchor.top + gap) - MARGIN;
         var openBelow = roomAbove < height && roomBelow > roomAbove;
         panel.classList.toggle('ssc-panel--below', openBelow);
 
         // The panel hangs to the left of the anchor unless there is no room.
         var roomLeft = anchor.left;
         var roomRight = window.innerWidth - anchor.right;
-        panel.classList.toggle('ssc-panel--left', roomLeft < width && roomRight > roomLeft);
+        panel.classList.toggle('ssc-panel--left',
+            roomLeft < width + MARGIN && roomRight > roomLeft);
+
+        if (openBelow) {
+            panel.style.top = gap + 'px';
+            panel.style.bottom = 'auto';
+        } else {
+            panel.style.bottom = gap + 'px';
+            panel.style.top = 'auto';
+        }
 
         var room = openBelow ? roomBelow : roomAbove;
         var ceiling = Math.min(640, window.innerHeight - 24);
@@ -650,6 +736,7 @@
             lastReport = null;
             updateLabel();
             elements.badge.hidden = true;
+            setButtonLevel(null);
             if (!elements.panel.hidden) { runTests(true); }
         };
 
