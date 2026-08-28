@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Demo 4 - browser extension that embeds a button on every page and rates the site for spam.">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>&#128737;</text></svg>">
+    <link rel="stylesheet" href="css/style.css">
+    <title>Demo 4 - Site Safety Checker</title>
+</head>
+<body>
+<header class="page-head">
+    <div class="wrap">
+        <p class="eyebrow">Lab 4 &middot; Demo 4</p>
+        <h1>Site Safety Checker</h1>
+        <p class="lead">
+            A browser extension that embeds a button on every page the browser visits.
+            The button shows <em>You are on &ldquo;URL&rdquo;</em>, and pressing it runs
+            33 tests to decide whether the site is spam and to give it a safety rating.
+        </p>
+    </div>
+</header>
+
+<main class="wrap">
+
+    <section class="card">
+        <h2>Part 1 &mdash; the embedded button</h2>
+        <p>
+            The extension&rsquo;s content script is injected into every page
+            (<code>http://*/*</code>, <code>https://*/*</code>). It builds a button inside a
+            <strong>shadow root</strong> so the page&rsquo;s own CSS can never break it, and
+            labels it with the current address:
+        </p>
+        <p class="sample-button">🛡 <span class="muted">You are on</span> <strong>&ldquo;localhost:8383/index.html&rdquo;</strong></p>
+        <p>
+            If the extension is loaded you will see the real button in the bottom right corner
+            of this page. Otherwise, use the buttons below &mdash; this page loads the same
+            analyser file directly.
+        </p>
+    </section>
+
+    <section class="card">
+        <h2>Part 2 &mdash; test any address</h2>
+        <p>Type a URL and run the 16 address-level tests, or scan this whole page with all 33 tests.</p>
+
+        <form id="url-form" class="url-form">
+            <label class="sr-only" for="url-input">URL to test</label>
+            <input id="url-input" type="text" value="http://paypal.secure-login.verify-account.tk/webscr?cmd=login&amp;dispatch=5885d80a13"
+                   spellcheck="false" autocomplete="off">
+            <button type="submit" class="primary">Test URL</button>
+        </form>
+
+        <div class="samples">
+            <span class="muted">Try:</span>
+            <button type="button" class="chip" data-url="https://www.bbc.co.uk/news">a normal news site</button>
+            <button type="button" class="chip" data-url="http://192.168.4.12:8899/login/verify/account/update?token=9f2a&amp;id=88123&amp;ref=mail">an IP address login page</button>
+            <button type="button" class="chip" data-url="https://bit.ly/3xYzAb">a shortened link</button>
+            <button type="button" class="chip" data-url="http://free-gift-cards-winner.xn--80ak6aa92e.tk/claim/prize/now/update-billing.exe">a prize scam</button>
+        </div>
+
+        <div class="actions">
+            <button type="button" id="scan-page" class="secondary">Scan this page (all 33 tests)</button>
+        </div>
+
+        <div id="report" class="report" hidden></div>
+    </section>
+
+    <section class="card">
+        <h2>Test pages for the extension</h2>
+        <p>Open these with the extension installed and press the injected button on each one.</p>
+        <ul class="links">
+            <li><a href="safe-sample.html">safe-sample.html</a> &mdash; a well behaved page, should score high.</li>
+            <li><a href="spam-sample.html">spam-sample.html</a> &mdash; a mock spam page that trips many tests.</li>
+        </ul>
+    </section>
+
+    <section class="card">
+        <h2>Loading the extension</h2>
+        <ol class="steps">
+            <li><strong>Chrome / Edge:</strong> open <code>chrome://extensions</code>, switch on
+                <em>Developer mode</em>, click <em>Load unpacked</em> and select the
+                <code>extension</code> folder of this project.</li>
+            <li><strong>Firefox:</strong> rename <code>manifest.firefox.json</code> to
+                <code>manifest.json</code>, open <code>about:debugging#/runtime/this-firefox</code>,
+                then <em>Load Temporary Add-on…</em> and pick that file.</li>
+            <li>Reload this page &mdash; the button appears in the bottom right corner.</li>
+        </ol>
+    </section>
+
+</main>
+
+<footer class="page-foot">
+    <div class="wrap">
+        <p>All tests run locally in the browser. Nothing is uploaded, no blocklist is contacted.</p>
+    </div>
+</footer>
+
+<script src="js/spam-analyzer.js"></script>
+<script src="js/demo.js"></script>
+</body>
+</html>

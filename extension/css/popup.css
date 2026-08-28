@@ -1,0 +1,74 @@
+:root {
+    --safe: #16a34a; --ok: #65a30d; --caution: #d97706;
+    --risky: #ea580c; --danger: #dc2626;
+    color-scheme: light dark;
+}
+
+body {
+    width: 320px;
+    margin: 0;
+    padding: 14px;
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    color: #0f172a;
+    background: #fff;
+}
+
+.head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.head h1 { margin: 0; font-size: 14px; }
+.sub { margin: 0; font-size: 11px; color: #64748b; }
+
+.url {
+    margin: 0 0 12px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: #eef2ff;
+    color: #312e81;
+    font-size: 11.5px;
+    word-break: break-all;
+}
+
+.result {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px; border: 1px solid #e2e8f0; border-radius: 10px;
+}
+
+.grade {
+    display: flex; align-items: center; justify-content: center;
+    width: 42px; height: 42px; flex: 0 0 auto;
+    border-radius: 50%; background: #e2e8f0;
+    font-size: 20px; font-weight: 800; color: #0f172a;
+}
+.grade.safe { background: var(--safe); color: #fff; }
+.grade.ok { background: var(--ok); color: #fff; }
+.grade.caution { background: var(--caution); color: #fff; }
+.grade.risky { background: var(--risky); color: #fff; }
+.grade.danger { background: var(--danger); color: #fff; }
+
+.result__text { display: flex; flex-direction: column; min-width: 0; }
+.result__text span { color: #64748b; font-size: 11.5px; }
+
+.findings { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.findings li {
+    padding: 6px 8px; border-left: 3px solid var(--caution);
+    border-radius: 6px; background: #fffbeb; font-size: 11.5px;
+}
+.findings li.high { border-left-color: var(--danger); background: #fef2f2; }
+
+.actions { margin-top: 12px; }
+.primary {
+    width: 100%; padding: 9px; border: 0; border-radius: 8px;
+    background: linear-gradient(135deg, #4f46e5, #7c3aed);
+    color: #fff; font-weight: 600; font-size: 13px; cursor: pointer;
+}
+.primary:hover { filter: brightness(1.07); }
+
+.toggle { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 12px; color: #475569; }
+
+@media (prefers-color-scheme: dark) {
+    body { background: #0f172a; color: #e2e8f0; }
+    .result { border-color: #1e293b; }
+    .url { background: #1e1b4b; color: #c7d2fe; }
+    .findings li { background: #2a2113; }
+    .findings li.high { background: #2a1216; }
+    .toggle { color: #94a3b8; }
+}

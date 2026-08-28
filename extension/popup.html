@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Site Safety Checker</title>
+<link rel="stylesheet" href="css/popup.css">
+</head>
+<body>
+<header class="head">
+    <img src="icons/icon48.png" alt="" width="28" height="28">
+    <div>
+        <h1>Site Safety Checker</h1>
+        <p class="sub">Demo 4 &middot; 33 heuristic tests</p>
+    </div>
+</header>
+
+<p class="url" id="url">Reading the current tab&hellip;</p>
+
+<div class="result" id="result" hidden>
+    <span class="grade" id="grade">?</span>
+    <div class="result__text">
+        <strong id="verdict">Not tested yet</strong>
+        <span id="detail">Press &ldquo;Test this site&rdquo; to run the scan.</span>
+    </div>
+</div>
+
+<ul class="findings" id="findings"></ul>
+
+<div class="actions">
+    <button type="button" id="run" class="primary">Test this site</button>
+</div>
+
+<label class="toggle">
+    <input type="checkbox" id="showButton" checked>
+    <span>Show the button on web pages</span>
+</label>
+
+<script src="js/popup.js"></script>
+</body>
+</html>

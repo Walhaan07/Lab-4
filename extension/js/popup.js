@@ -1,0 +1,76 @@
+/*
+ * popup.js -- toolbar popup.
+ * Shows the rating of the active tab and can start a scan without using the
+ * in-page button (useful when the button has been switched off).
+ */
+'use strict';
+
+const $ = (id) => document.getElementById(id);
+const LEVELS = ['safe', 'ok', 'caution', 'risky', 'danger'];
+
+async function activeTab() {
+    const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
+    return tab;
+}
+
+function show(report) {
+    $('result').hidden = false;
+    $('grade').textContent = report.rating;
+    $('grade').className = 'grade ' + (LEVELS.includes(report.level) ? report.level : '');
+    $('verdict').textContent = `${report.verdict} — ${report.score}/100`;
+
+    const failedCount = report.failedCount !== undefined ? report.failedCount : report.failed;
+    $('detail').textContent = `${failedCount} of ${report.total} tests raised a warning`;
+
+    const list = $('findings');
+    list.replaceChildren();
+    if (Array.isArray(report.failed)) {
+        report.failed.slice(0, 5).forEach((check) => {
+            const li = document.createElement('li');
+            if (check.severity === 'high') { li.className = 'high'; }
+            li.textContent = `${check.title}: ${check.detail}`;
+            list.appendChild(li);
+        });
+    }
+}
+
+function ask(tabId, message) {
+    return new Promise((resolve) => {
+        chrome.tabs.sendMessage(tabId, message, (response) => {
+            void chrome.runtime.lastError;      // page without content script
+            resolve(response);
+        });
+    });
+}
+
+(async function init() {
+    const tab = await activeTab();
+    $('url').textContent = tab && tab.url ? `You are on "${tab.url}"` : 'No page in this tab.';
+
+    chrome.storage.sync.get({showButton: true}, (prefs) => {
+        $('showButton').checked = prefs.showButton;
+    });
+
+    $('showButton').addEventListener('change', async (event) => {
+        const visible = event.target.checked;
+        chrome.storage.sync.set({showButton: visible});
+        if (tab) { await ask(tab.id, {type: 'SSC_TOGGLE_BUTTON', visible}); }
+    });
+
+    $('run').addEventListener('click', async () => {
+        if (!tab) { return; }
+        $('verdict').textContent = 'Running the tests…';
+        $('result').hidden = false;
+        await ask(tab.id, {type: 'SSC_RUN'});
+        window.setTimeout(async () => {
+            const response = await ask(tab.id, {type: 'SSC_GET_REPORT'});
+            if (response && response.report) { show(response.report); }
+            else { $('verdict').textContent = 'This page cannot be scanned.'; }
+        }, 250);
+    });
+
+    if (tab) {
+        const response = await ask(tab.id, {type: 'SSC_GET_REPORT'});
+        if (response && response.report) { show(response.report); }
+    }
+}());

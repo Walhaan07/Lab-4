@@ -1,0 +1,19 @@
+{
+  "name": "lab-4-demo-4",
+  "version": "1.0.0",
+  "description": "Demo 4 - browser extension that embeds a button showing the current URL and rates the site for spam / phishing.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "sync": "node tools/sync-shared.js",
+    "icons": "node tools/make-icons.js",
+    "build": "npm run sync && npm run icons",
+    "test": "node --test test/analyzer.test.js"
+  },
+  "keywords": ["browser-extension", "chrome", "manifest-v3", "spam-detection", "netbeans"],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}

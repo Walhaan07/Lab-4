@@ -1,0 +1,18 @@
+# NetBeans
+nbproject/private/
+build/
+dist/
+nbbuild/
+nbdist/
+.nb-gradle/
+
+# Node
+node_modules/
+npm-debug.log*
+package-lock.json
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
