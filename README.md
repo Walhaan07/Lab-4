@@ -134,13 +134,17 @@ that still holds white text — #ef4444 would look hotter but drops to 3.8:1. Me
 rendered pixels at the text's own height, the safe pill reads 5.25:1 and the unsafe pill
 4.69:1, and every piece of text on the rating block stays at 5.1:1 or better.
 
-**Minimising.** A long address makes a wide pill, so the control beside it collapses the pill
-to a circle showing just the rating letter, and expands it again. The choice is remembered.
+**Minimising.** A long address makes a wide pill, so the control beside it collapses everything
+to a circle showing just the rating letter — the report closes with it — and expands it again.
+The choice is remembered.
 
 **The rating block** in the report is painted with the same gradient as the pill, not a wash of
 it — a translucent tint over a dark panel turns any bright colour to mud, which is why the
-alarm red read as plum there while the pill was vivid. Text on the block switches to white and
-the score ring goes white with it. The rest of the panel stays neutral: a saturated fill behind
+alarm red read as plum there while the pill was vivid. Text on the block switches to white, while the score
+ring, the number inside it and the rating chip take a colour that stands off the card: apple
+green on the teal, gold on the red, and pale gold or peach on the amber and orange. Those are
+graphics and large text, where the bar is 3:1; measured on the rendered card they run from
+3.64:1 to 4.57:1, and the chip's dark ink on its filled ground reaches 11:1. The rest of the panel stays neutral: a saturated fill behind
 body text would cost more in readability than it gains.
 
 **The counts are jump links.** Clicking *high*, *medium*, *low* or *passed* scrolls the report

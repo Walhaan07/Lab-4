@@ -154,6 +154,11 @@ window.SSC_PANEL_CSS = `
  * striking in a mockup and is unreadable in use.
  */
 .ssc-level--safe, .ssc-level--ok {
+    --ssc-chip-ink: #1a2e05;
+    /* apple green, well clear of the teal card behind it */
+    --ssc-ring-1: #84cc16;
+    --ssc-ring-2: #a3e635;
+    --ssc-ring-3: #bef264;
     --ssc-grad-1: #075985;              /* white: 7.6:1 */
     --ssc-grad-2: #0e7490;              /* white: 5.4:1 */
     --ssc-grad-3: #0f766e;              /* white: 5.6:1 */
@@ -166,6 +171,10 @@ window.SSC_PANEL_CSS = `
     --ssc-pill-token: #0b4f5e;
 }
 .ssc-level--caution {
+    --ssc-chip-ink: #422006;
+    --ssc-ring-1: #fcd34d;
+    --ssc-ring-2: #fde68a;
+    --ssc-ring-3: #fef3c7;
     --ssc-grad-1: #92400e;
     --ssc-grad-2: #b45309;
     --ssc-grad-3: #c2740a;              /* white: 4.6:1 */
@@ -178,6 +187,10 @@ window.SSC_PANEL_CSS = `
     --ssc-pill-token: #7c3d06;
 }
 .ssc-level--risky {
+    --ssc-chip-ink: #431407;
+    --ssc-ring-1: #fdba74;
+    --ssc-ring-2: #fed7aa;
+    --ssc-ring-3: #ffedd5;
     --ssc-grad-1: #9a3412;
     --ssc-grad-2: #c2410c;
     --ssc-grad-3: #dd5f14;              /* white: 4.5:1 */
@@ -190,6 +203,11 @@ window.SSC_PANEL_CSS = `
     --ssc-pill-token: #7c2d12;
 }
 .ssc-level--danger {
+    --ssc-chip-ink: #422006;
+    /* gold on the red card: clearly separated, and still reads as alarm */
+    --ssc-ring-1: #facc15;
+    --ssc-ring-2: #fde047;
+    --ssc-ring-3: #fef08a;
     /* The brightest red that still carries white text: #ef4444 would look
        hotter but drops to 3.8:1, so the ramp tops out at a crimson-rose and
        the heat comes from the glow instead. */
@@ -558,11 +576,6 @@ window.SSC_PANEL_CSS = `
     /* Secondary text on a saturated fill needs to stay close to white: the
        pill's translucent ink measures 3.65:1 at this size. */
     --ssc-card-ink-2: rgba(255, 255, 255, .98);
-
-    /* the ring reads as white on the coloured card */
-    --ssc-ring-1: #ffffff;
-    --ssc-ring-2: rgba(255, 255, 255, .94);
-    --ssc-ring-3: rgba(255, 255, 255, .84);
 }
 
 /* Nothing has been scanned yet: keep the neutral card. */
@@ -599,6 +612,9 @@ window.SSC_PANEL_CSS = `
 }
 
 .ssc-ring__score {
+    /* the number takes the ring's colour; at 23px bold it is large text, so
+       3:1 is the bar and every verdict clears it with room to spare */
+    color: var(--ssc-ring-2, inherit);
     font-size: 23px;
     font-weight: 700;
     letter-spacing: -.03em;
@@ -623,11 +639,15 @@ window.SSC_PANEL_CSS = `
     gap: 5px;
     padding: 2px 9px;
     border-radius: var(--ssc-r-pill);
-    /* its own ground, so it stays legible on top of the verdict wash */
-    background: var(--ssc-surface);
-    border: 1px solid rgba(255, 255, 255, .3);
+    /*
+     * Filled with the same colour as the score ring so the two match. The
+     * text is dark rather than white: white on apple green measures 1.5:1,
+     * whereas this ink clears 10:1 on every verdict.
+     */
+    background: var(--ssc-ring-2, var(--ssc-surface));
+    border: 1px solid rgba(255, 255, 255, .35);
     box-shadow: 0 1px 3px rgba(0, 0, 0, .18);
-    color: var(--ssc-level-ink, var(--ssc-text-2));
+    color: var(--ssc-chip-ink, var(--ssc-level-ink, var(--ssc-text-2)));
     font-size: 10.5px;
     font-weight: 700;
     letter-spacing: .05em;

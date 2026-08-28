@@ -630,7 +630,12 @@
         elements.toggle.title = collapsed ? 'Show the full address' : 'Minimise to a circle';
         elements.toggle.setAttribute('aria-label', elements.toggle.title);
         updateLabel();
-        if (!elements.panel.hidden) { placePanel(); }
+
+        /* Minimising takes the whole thing down to the circle, report
+           included - leaving an open panel above a collapsed pill would be a
+           strange half state. */
+        if (collapsed) { hidePanel(); }
+        else if (!elements.panel.hidden) { placePanel(); }
         if (save) {
             try {
                 chrome.storage.local.set({buttonCollapsed: collapsed}, function () {
