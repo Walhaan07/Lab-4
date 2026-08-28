@@ -63,6 +63,8 @@ window.SSC_PANEL_CSS = `
 
     --ssc-track: rgba(15, 23, 42, .10);
     --ssc-shade: rgba(15, 23, 42, .13);
+    --ssc-wash-1: 30%;                  /* verdict wash on the rating block */
+    --ssc-wash-2: 16%;
 
     /* tint backgrounds for findings */
     --ssc-tint-safe: rgba(18, 146, 91, .10);
@@ -112,6 +114,8 @@ window.SSC_PANEL_CSS = `
 
         --ssc-track: rgba(255, 255, 255, .10);
         --ssc-shade: rgba(0, 0, 0, .55);
+        --ssc-wash-1: 52%;              /* white text, so the wash can be bold */
+        --ssc-wash-2: 28%;
 
         --ssc-tint-safe: rgba(52, 211, 153, .12);
         --ssc-tint-caution: rgba(251, 191, 36, .12);
@@ -186,16 +190,19 @@ window.SSC_PANEL_CSS = `
     --ssc-pill-token: #7c2d12;
 }
 .ssc-level--danger {
-    --ssc-grad-1: #7f1d1d;
-    --ssc-grad-2: #b91c1c;
-    --ssc-grad-3: #dc2626;              /* white: 4.5:1 */
-    --ssc-glow: rgba(248, 113, 113, .7);
-    --ssc-arc-1: #dc2626;
-    --ssc-arc-2: #ef4444;
-    --ssc-arc-3: #f87171;
+    /* The brightest red that still carries white text: #ef4444 would look
+       hotter but drops to 3.8:1, so the ramp tops out at a crimson-rose and
+       the heat comes from the glow instead. */
+    --ssc-grad-1: #c81111;              /* white: 5.4:1 */
+    --ssc-grad-2: #dc2626;              /* white: 4.5:1 */
+    --ssc-grad-3: #e11d48;              /* white: 4.7:1 */
+    --ssc-glow: rgba(255, 70, 70, .95);
+    --ssc-arc-1: #ef4444;
+    --ssc-arc-2: #f43f5e;
+    --ssc-arc-3: #fb7185;
     --ssc-pill-ink: #ffffff;
-    --ssc-pill-ink-2: rgba(254, 242, 242, .84);
-    --ssc-pill-token: #7f1d1d;
+    --ssc-pill-ink-2: rgba(255, 241, 242, .88);
+    --ssc-pill-token: #be123c;
 }
 
 /* ============================================================ 2. button */
@@ -534,15 +541,15 @@ window.SSC_PANEL_CSS = `
     align-items: center;
     gap: 15px;
     padding: 16px 15px;
-    border: 1px solid color-mix(in srgb, var(--ssc-level, var(--ssc-border-2)) 34%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ssc-arc-2, var(--ssc-border-2)) 45%, transparent);
     border-radius: var(--ssc-r-md);
     background:
         linear-gradient(135deg,
-            color-mix(in srgb, var(--ssc-arc-2, var(--ssc-level)) 24%, transparent) 0%,
-            color-mix(in srgb, var(--ssc-arc-3, var(--ssc-level)) 12%, transparent) 46%,
-            transparent 78%),
+            color-mix(in srgb, var(--ssc-arc-2, var(--ssc-level)) var(--ssc-wash-1), transparent) 0%,
+            color-mix(in srgb, var(--ssc-arc-3, var(--ssc-level)) var(--ssc-wash-2), transparent) 52%,
+            color-mix(in srgb, var(--ssc-arc-1, var(--ssc-level)) 6%, transparent) 100%),
         var(--ssc-surface-2);
-    box-shadow: 0 8px 24px -14px var(--ssc-glow, transparent),
+    box-shadow: 0 10px 26px -14px var(--ssc-glow, transparent),
                 inset 0 1px 0 rgba(255, 255, 255, .05);
 }
 
@@ -585,9 +592,11 @@ window.SSC_PANEL_CSS = `
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    padding: 2px 8px;
+    padding: 2px 9px;
     border-radius: var(--ssc-r-pill);
-    background: var(--ssc-level-tint, var(--ssc-surface-3));
+    /* its own ground, so it stays legible on top of the verdict wash */
+    background: color-mix(in srgb, var(--ssc-surface) 88%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ssc-level, var(--ssc-border-2)) 40%, transparent);
     color: var(--ssc-level-ink, var(--ssc-text-2));
     font-size: 10.5px;
     font-weight: 700;

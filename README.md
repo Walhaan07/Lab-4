@@ -129,8 +129,10 @@ clicked, and a single page app that changes its address without reloading is re-
 
 The label and shield are white on every verdict. That is why the ramps run deep rather than
 pastel: white text on bright cyan is unreadable, so the gradient carries its brightness in a
-coloured glow around the pill instead of in the fill. Measured from rendered pixels at the
-text's own height, the safe pill reads 5.25:1 and the unsafe pill 5.56:1.
+coloured glow around the pill instead of in the fill. The unsafe ramp is the brightest red
+that still holds white text — #ef4444 would look hotter but drops to 3.8:1. Measured from
+rendered pixels at the text's own height, the safe pill reads 5.25:1 and the unsafe pill
+4.69:1, and every piece of text on the rating block stays at 5.1:1 or better.
 
 **Minimising.** A long address makes a wide pill, so the control beside it collapses the pill
 to a circle showing just the rating letter, and expands it again. The choice is remembered.
