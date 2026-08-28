@@ -533,29 +533,52 @@ window.SSC_PANEL_CSS = `
 
 /* ========================================================== 4. verdict */
 
-/* The verdict block carries the result's colour: a diagonal wash of the
-   gradient, an edge in the same hue, and a soft glow underneath. */
+/*
+ * The verdict block is painted with the same gradient as the button, not a
+ * wash of it: a translucent tint over a dark panel turns any bright colour to
+ * mud, which is why the alarm red read as plum here while the pill was vivid.
+ * Carrying the real ramp means the text on it switches to the pill's ink, and
+ * the ring inside it goes white so the score still stands out.
+ */
 .ssc-summary {
     position: relative;
     display: flex;
     align-items: center;
     gap: 15px;
     padding: 16px 15px;
-    border: 1px solid color-mix(in srgb, var(--ssc-arc-2, var(--ssc-border-2)) 45%, transparent);
+    border: 1px solid rgba(255, 255, 255, .18);
     border-radius: var(--ssc-r-md);
     background:
-        linear-gradient(135deg,
-            color-mix(in srgb, var(--ssc-arc-2, var(--ssc-level)) var(--ssc-wash-1), transparent) 0%,
-            color-mix(in srgb, var(--ssc-arc-3, var(--ssc-level)) var(--ssc-wash-2), transparent) 52%,
-            color-mix(in srgb, var(--ssc-arc-1, var(--ssc-level)) 6%, transparent) 100%),
-        var(--ssc-surface-2);
-    box-shadow: 0 10px 26px -14px var(--ssc-glow, transparent),
-                inset 0 1px 0 rgba(255, 255, 255, .05);
+        linear-gradient(180deg, rgba(255, 255, 255, .18), rgba(255, 255, 255, 0) 46%),
+        linear-gradient(120deg, var(--ssc-grad-1), var(--ssc-grad-2) 52%, var(--ssc-grad-3));
+    color: var(--ssc-pill-ink, var(--ssc-text));
+    box-shadow: 0 14px 32px -16px var(--ssc-glow, transparent),
+                inset 0 1px 0 rgba(255, 255, 255, .22);
+
+    /* Secondary text on a saturated fill needs to stay close to white: the
+       pill's translucent ink measures 3.65:1 at this size. */
+    --ssc-card-ink-2: rgba(255, 255, 255, .98);
+
+    /* the ring reads as white on the coloured card */
+    --ssc-ring-1: #ffffff;
+    --ssc-ring-2: rgba(255, 255, 255, .94);
+    --ssc-ring-3: rgba(255, 255, 255, .84);
+}
+
+/* Nothing has been scanned yet: keep the neutral card. */
+.ssc-summary:not([class*="ssc-level--"]) {
+    border-color: var(--ssc-border);
+    background: var(--ssc-surface-2);
+    color: var(--ssc-text);
+    --ssc-card-ink-2: var(--ssc-text-2);
+    --ssc-ring-1: var(--ssc-accent);
+    --ssc-ring-2: var(--ssc-accent);
+    --ssc-ring-3: var(--ssc-accent);
 }
 
 .ssc-ring { position: relative; flex: 0 0 auto; width: 84px; height: 84px; }
 .ssc-ring__svg { width: 100%; height: 100%; display: block; transform: rotate(-90deg); }
-.ssc-ring__track { fill: none; stroke: var(--ssc-track); stroke-width: 7.5; }
+.ssc-ring__track { fill: none; stroke: rgba(255, 255, 255, .24); stroke-width: 7.5; }
 
 .ssc-ring__arc {
     fill: none;
@@ -583,7 +606,13 @@ window.SSC_PANEL_CSS = `
     font-feature-settings: "tnum" 1;
 }
 
-.ssc-ring__max { margin-top: 3px; color: var(--ssc-text-3); font-size: 9.5px; font-weight: 600; letter-spacing: .04em; }
+.ssc-ring__max {
+    margin-top: 3px;
+    color: var(--ssc-card-ink-2, var(--ssc-text-3));
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: .04em;
+}
 
 .ssc-summary__text { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 
@@ -595,8 +624,9 @@ window.SSC_PANEL_CSS = `
     padding: 2px 9px;
     border-radius: var(--ssc-r-pill);
     /* its own ground, so it stays legible on top of the verdict wash */
-    background: color-mix(in srgb, var(--ssc-surface) 88%, transparent);
-    border: 1px solid color-mix(in srgb, var(--ssc-level, var(--ssc-border-2)) 40%, transparent);
+    background: var(--ssc-surface);
+    border: 1px solid rgba(255, 255, 255, .3);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .18);
     color: var(--ssc-level-ink, var(--ssc-text-2));
     font-size: 10.5px;
     font-weight: 700;
@@ -612,7 +642,7 @@ window.SSC_PANEL_CSS = `
 }
 
 .ssc-summary__host {
-    color: var(--ssc-text-2);
+    color: var(--ssc-card-ink-2, var(--ssc-text-2));
     font-size: 12px;
     font-family: var(--ssc-mono);
     overflow-wrap: anywhere;

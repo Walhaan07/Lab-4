@@ -295,9 +295,9 @@
         gradient.setAttribute('id', gradientId);
         gradient.setAttribute('x1', '0'); gradient.setAttribute('y1', '0');
         gradient.setAttribute('x2', '1'); gradient.setAttribute('y2', '1');
-        [['0%', 'var(--ssc-arc-1, var(--ssc-level))'],
-         ['52%', 'var(--ssc-arc-2, var(--ssc-level))'],
-         ['100%', 'var(--ssc-arc-3, var(--ssc-level))']].forEach(function (pair) {
+        [['0%', 'var(--ssc-ring-1, var(--ssc-arc-1, var(--ssc-level)))'],
+         ['52%', 'var(--ssc-ring-2, var(--ssc-arc-2, var(--ssc-level)))'],
+         ['100%', 'var(--ssc-ring-3, var(--ssc-arc-3, var(--ssc-level)))']].forEach(function (pair) {
             var stop = document.createElementNS(SVG_NS, 'stop');
             stop.setAttribute('offset', pair[0]);
             stop.style.stopColor = pair[1];

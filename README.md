@@ -137,10 +137,11 @@ rendered pixels at the text's own height, the safe pill reads 5.25:1 and the uns
 **Minimising.** A long address makes a wide pill, so the control beside it collapses the pill
 to a circle showing just the rating letter, and expands it again. The choice is remembered.
 
-**The rating block** in the report carries the same colour as a diagonal wash, an edge in the
-verdict's hue and a soft glow, and the score ring is painted with the brighter version of the
-gradient. The rest of the panel stays neutral: a saturated wash behind body text would cost
-more in readability than it gains.
+**The rating block** in the report is painted with the same gradient as the pill, not a wash of
+it — a translucent tint over a dark panel turns any bright colour to mud, which is why the
+alarm red read as plum there while the pill was vivid. Text on the block switches to white and
+the score ring goes white with it. The rest of the panel stays neutral: a saturated fill behind
+body text would cost more in readability than it gains.
 
 **The counts are jump links.** Clicking *high*, *medium*, *low* or *passed* scrolls the report
 to the first check of that kind and flashes it, which matters on a page where sixteen findings
