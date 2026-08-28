@@ -29,6 +29,7 @@
     var lastReport = null;
     var position = {right: DEFAULT_POSITION.right, bottom: DEFAULT_POSITION.bottom};
     var positionIsUserChosen = false;   // a dragged position always wins
+    var collapsed = false;              // pill shown as a circle
 
     /* ------------------------------------------------------------- helpers */
 
@@ -48,6 +49,8 @@
         alert: ['M12 8.4v4.8', 'M12 16.5h.01',
                 'M10.3 3.6 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z'],
         chevron: ['m9 6 6 6-6 6'],
+        collapse: ['m13 6 6 6-6 6', 'm5 6 6 6-6 6'],
+        expand: ['m11 6-6 6 6 6', 'm19 6-6 6 6 6'],
         refresh: ['M20 11.5A8 8 0 1 1 17.6 6', 'M20 4v5h-5']
     };
 
@@ -137,6 +140,19 @@
         button.appendChild(label);
         button.appendChild(badge);
 
+        /* A long address makes the pill wide, so it can be collapsed to a
+           circle showing only the rating. The toggle sits beside the pill
+           rather than inside it, so it stays reachable in both states. */
+        var collapseToggle = el('button', 'ssc-dock__toggle');
+        collapseToggle.type = 'button';
+        collapseToggle.appendChild(icon('collapse'));
+        collapseToggle.title = 'Minimise to a circle';
+        collapseToggle.setAttribute('aria-label', 'Minimise the button to a circle');
+
+        var dock = el('div', 'ssc-dock');
+        dock.appendChild(collapseToggle);
+        dock.appendChild(button);
+
         /* ---- Part 2: the report panel ------------------------------------ */
         var panel = el('section', 'ssc-panel');
         panel.hidden = true;
@@ -179,9 +195,12 @@
         panel.appendChild(footer);
 
         shadow.appendChild(panel);
-        shadow.appendChild(button);
+        shadow.appendChild(dock);
 
-        elements = {host: host, button: button, badge: badge, panel: panel, body: body};
+        elements = {host: host, dock: dock, button: button, badge: badge,
+                    toggle: collapseToggle, panel: panel, body: body};
+
+        collapseToggle.addEventListener('click', function () { setCollapsed(!collapsed, true); });
 
         button.addEventListener('click', togglePanel);
         close.addEventListener('click', hidePanel);
@@ -198,30 +217,42 @@
 
     /* ------------------------------------------------------------ analysis */
 
-    function runTests(force) {
+    /*
+     * Runs the checks. When `quiet` is set the panel is left closed and only
+     * the pill and the toolbar badge are updated - that is what happens
+     * automatically on every page, so the verdict is already coloured when you
+     * arrive rather than after you press the button.
+     */
+    function runTests(force, quiet) {
         if (lastReport && !force) { return lastReport; }
 
-        var loading = el('p', 'ssc-loading');
-        loading.appendChild(el('span', 'ssc-spinner'));
-        loading.appendChild(el('span', null, 'Running ' + TEST_COUNT + ' checks on this page…'));
-        elements.body.replaceChildren(loading);
+        if (!quiet) {
+            var loading = el('p', 'ssc-loading');
+            loading.appendChild(el('span', 'ssc-spinner'));
+            loading.appendChild(el('span', null, 'Running ' + TEST_COUNT + ' checks on this page…'));
+            elements.body.replaceChildren(loading);
+        }
 
         // Let the browser paint the "running" state before the sync scan.
         window.setTimeout(function () {
             var report;
             if (!window.SpamAnalyzer || typeof window.SpamAnalyzer.analyze !== 'function') {
-                elements.body.replaceChildren(el('p', 'ssc-loading',
-                    'The analyser did not load. Reload the extension and try again.'));
+                if (!quiet) {
+                    elements.body.replaceChildren(el('p', 'ssc-loading',
+                        'The analyser did not load. Reload the extension and try again.'));
+                }
                 return;
             }
             try {
                 report = window.SpamAnalyzer.analyze({url: location.href, document: document});
             } catch (error) {
-                elements.body.replaceChildren(el('p', 'ssc-loading', 'The scan failed: ' + error.message));
+                if (!quiet) {
+                    elements.body.replaceChildren(el('p', 'ssc-loading', 'The scan failed: ' + error.message));
+                }
                 return;
             }
             lastReport = report;
-            renderReport(report);
+            if (!quiet || !elements.panel.hidden) { renderReport(report); }
             updateBadge(report);
             publish(report);
         }, 30);
@@ -264,9 +295,9 @@
         gradient.setAttribute('id', gradientId);
         gradient.setAttribute('x1', '0'); gradient.setAttribute('y1', '0');
         gradient.setAttribute('x2', '1'); gradient.setAttribute('y2', '1');
-        [['0%', 'var(--ssc-grad-1, var(--ssc-level))'],
-         ['52%', 'var(--ssc-grad-2, var(--ssc-level))'],
-         ['100%', 'var(--ssc-grad-3, var(--ssc-level))']].forEach(function (pair) {
+        [['0%', 'var(--ssc-arc-1, var(--ssc-level))'],
+         ['52%', 'var(--ssc-arc-2, var(--ssc-level))'],
+         ['100%', 'var(--ssc-arc-3, var(--ssc-level))']].forEach(function (pair) {
             var stop = document.createElementNS(SVG_NS, 'stop');
             stop.setAttribute('offset', pair[0]);
             stop.style.stopColor = pair[1];
@@ -306,28 +337,58 @@
         return wrap;
     }
 
-    /* Counts by severity, so the shape of the result is readable at a glance. */
+    /*
+     * Counts by severity, so the shape of the result is readable at a glance.
+     * Each one is a button that jumps to the first check of that kind, which
+     * matters on a page like the sample where sixteen findings do not fit on
+     * screen at once.
+     */
     function buildTally(report) {
         var counts = {high: 0, medium: 0, low: 0};
         report.failed.forEach(function (check) { counts[check.severity]++; });
 
         var tally = el('div', 'ssc-tally');
         [
-            {label: 'high', value: counts.high, colour: 'var(--ssc-danger)'},
-            {label: 'medium', value: counts.medium, colour: 'var(--ssc-caution)'},
-            {label: 'low', value: counts.low, colour: 'var(--ssc-text-3)'},
-            {label: 'passed', value: report.passed.length, colour: 'var(--ssc-safe)'}
+            {key: 'high', label: 'high', value: counts.high, colour: 'var(--ssc-danger)'},
+            {key: 'medium', label: 'medium', value: counts.medium, colour: 'var(--ssc-caution)'},
+            {key: 'low', label: 'low', value: counts.low, colour: 'var(--ssc-text-3)'},
+            {key: 'pass', label: 'passed', value: report.passed.length, colour: 'var(--ssc-safe)'}
         ].forEach(function (entry) {
             if (!entry.value) { return; }
-            var item = el('span', 'ssc-tally__item');
+            var item = el('button', 'ssc-tally__item');
+            item.type = 'button';
+            item.title = 'Jump to the ' + entry.label + ' checks';
             var dot = el('span', 'ssc-tally__dot');
             dot.style.setProperty('--ssc-dot', entry.colour);
             item.appendChild(dot);
             item.appendChild(el('b', null, String(entry.value)));
             item.appendChild(el('span', null, entry.label));
+            item.addEventListener('click', function () { jumpToGroup(entry.key); });
             tally.appendChild(item);
         });
         return tally;
+    }
+
+    /** Scrolls the report to the first check of a given severity. */
+    function jumpToGroup(key) {
+        var body = elements.body;
+
+        if (key === 'pass') {
+            var disclosure = body.querySelector('.ssc-disclosure');
+            if (disclosure) { disclosure.open = true; }
+        }
+
+        var target = body.querySelector('.ssc-item--' + key);
+        if (!target) { return; }
+
+        /* The container is scrolled directly rather than with scrollIntoView,
+           which would also scroll the page behind the panel. */
+        var smooth = !window.matchMedia || !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        var delta = target.getBoundingClientRect().top - body.getBoundingClientRect().top;
+        body.scrollTo({top: body.scrollTop + delta - 8, behavior: smooth ? 'smooth' : 'auto'});
+
+        target.classList.add('ssc-item--flash');
+        window.setTimeout(function () { target.classList.remove('ssc-item--flash'); }, 1300);
     }
 
     /*
@@ -476,6 +537,7 @@
         badge.textContent = report.rating;
         badge.className = 'ssc-button__badge ssc-level--' + report.level;
         badge.title = report.verdict + ' - ' + report.score + '/100';
+        elements.button.classList.add('ssc-button--has-rating');
         setButtonLevel(report.level);
     }
 
@@ -542,8 +604,8 @@
             elements.panel.hidden = false;
             placePanel();
             elements.button.setAttribute('aria-expanded', 'true');
-            runTests(!lastReport);
-            if (lastReport) { renderReport(lastReport); }
+            // The page was already scanned on arrival, so this usually just draws.
+            if (lastReport) { renderReport(lastReport); } else { runTests(true); }
         } else {
             hidePanel();
         }
@@ -552,6 +614,38 @@
     function hidePanel() {
         elements.panel.hidden = true;
         elements.button.setAttribute('aria-expanded', 'false');
+    }
+
+    /* ---------------------------------------------------------- collapsing */
+
+    /**
+     * Collapsed, the pill becomes a circle showing just the rating letter.
+     * @param {boolean} next   whether to collapse
+     * @param {boolean} save   whether to remember the choice
+     */
+    function setCollapsed(next, save) {
+        collapsed = !!next;
+        elements.button.classList.toggle('ssc-button--mini', collapsed);
+        elements.toggle.replaceChildren(icon(collapsed ? 'expand' : 'collapse'));
+        elements.toggle.title = collapsed ? 'Show the full address' : 'Minimise to a circle';
+        elements.toggle.setAttribute('aria-label', elements.toggle.title);
+        updateLabel();
+        if (!elements.panel.hidden) { placePanel(); }
+        if (save) {
+            try {
+                chrome.storage.local.set({buttonCollapsed: collapsed}, function () {
+                    void chrome.runtime.lastError;
+                });
+            } catch (e) { /* storage unavailable - lasts for this page */ }
+        }
+    }
+
+    function restoreCollapsed() {
+        try {
+            chrome.storage.local.get({buttonCollapsed: false}, function (stored) {
+                if (stored && stored.buttonCollapsed) { setCollapsed(true, false); }
+            });
+        } catch (e) { /* storage unavailable - stay expanded */ }
     }
 
     /* ------------------------------------------------- avoiding page furniture */
@@ -646,7 +740,9 @@
             button.classList.add('ssc-button--dragging');
             hidePanel();
 
-            var size = button.getBoundingClientRect();
+            // The dock is measured, not the pill: the collapse toggle sits to
+            // the left of it and would otherwise be pushed off the edge.
+            var size = elements.dock.getBoundingClientRect();
             var right = clamp(start.right - dx, 8, Math.max(8, window.innerWidth - size.width - 8));
             var bottom = clamp(start.bottom - dy, 8, Math.max(8, window.innerHeight - size.height - 8));
             setPosition({right: right, bottom: bottom});
@@ -674,7 +770,7 @@
 
         // Keep the button on screen when the window is resized.
         window.addEventListener('resize', function () {
-            var size = elements.button.getBoundingClientRect();
+            var size = elements.dock.getBoundingClientRect();
             setPosition({
                 right: clamp(position.right, 8, Math.max(8, window.innerWidth - size.width - 8)),
                 bottom: clamp(position.bottom, 8, Math.max(8, window.innerHeight - size.height - 8))
@@ -711,7 +807,7 @@
                     return;
                 }
                 positionIsUserChosen = true;
-                var size = elements.button.getBoundingClientRect();
+                var size = elements.dock.getBoundingClientRect();
                 setPosition({
                     right: clamp(saved.right, 8, Math.max(8, window.innerWidth - size.width - 8)),
                     bottom: clamp(saved.bottom, 8, Math.max(8, window.innerHeight - size.height - 8))
@@ -727,6 +823,8 @@
      * would leave the button showing a stale URL and a rating that belongs to
      * the previous view. Watch for that and reset.
      */
+    var rescanTimer = null;
+
     function watchNavigation() {
         var current = location.href;
 
@@ -736,8 +834,13 @@
             lastReport = null;
             updateLabel();
             elements.badge.hidden = true;
+            elements.button.classList.remove('ssc-button--has-rating');
             setButtonLevel(null);
-            if (!elements.panel.hidden) { runTests(true); }
+            // Re-scan the new view so the pill recolours by itself.
+            window.clearTimeout(rescanTimer);
+            rescanTimer = window.setTimeout(function () {
+                runTests(true, elements.panel.hidden);
+            }, 500);
         };
 
         window.addEventListener('popstate', onChange);
@@ -761,8 +864,8 @@
         var label = shadow.querySelector('.ssc-button__url');
         if (label) { label.textContent = '"' + shortUrl(location.href) + '"'; }
         elements.button.title = 'You are on ' + location.href +
-            '\nClick to run the spam / safety test (Alt+Shift+S)' +
-            '\nDrag the button to move it out of the way';
+            '\nClick for the safety report (Alt+Shift+S)' +
+            '\nDrag to move it out of the way';
     }
 
     /* ------------------------------------------------- popup / preferences */
@@ -803,10 +906,16 @@
         buildUi();
         makeDraggable();
         restorePosition();
+        restoreCollapsed();
         /* Bars that appear a moment after load (cookie notices, chat widgets)
            are picked up by this second look. */
         window.setTimeout(avoidBottomBar, 1200);
         watchNavigation();
+
+        /* Scan on arrival so the pill already shows the verdict. The short
+           delay lets the page finish drawing, since half the checks read the
+           rendered document. */
+        window.setTimeout(function () { runTests(true, true); }, 500);
         try {
             chrome.storage.sync.get({showButton: true}, function (prefs) {
                 applyVisibility(prefs.showButton);

@@ -122,11 +122,27 @@ because many sites pin their own bar down there.
 Pressing the button (or **Alt+Shift+S**) runs all 49 checks and opens a report showing the
 score, the letter rating, every finding with its penalty, and the checks that passed.
 
-**The button carries the verdict.** Once a page has been rated the pill takes the colour of
-the result — a cyan-teal gradient for a safe site, amber and orange in between, and a deep red
-for one that fails — so the answer is readable without opening anything. The score ring uses
-the same gradient, while the rest of the panel stays neutral: a saturated wash behind body
-text would cost more in readability than it gains.
+**The verdict appears on its own.** The page is checked automatically about half a second
+after it loads, so the pill is already coloured when you arrive — a cyan-teal gradient for a
+safe site, amber and orange in between, deep red for one that fails. Nothing has to be
+clicked, and a single page app that changes its address without reloading is re-checked too.
+
+The label and shield are white on every verdict. That is why the ramps run deep rather than
+pastel: white text on bright cyan is unreadable, so the gradient carries its brightness in a
+coloured glow around the pill instead of in the fill. Measured from rendered pixels at the
+text's own height, the safe pill reads 5.25:1 and the unsafe pill 5.56:1.
+
+**Minimising.** A long address makes a wide pill, so the control beside it collapses the pill
+to a circle showing just the rating letter, and expands it again. The choice is remembered.
+
+**The rating block** in the report carries the same colour as a diagonal wash, an edge in the
+verdict's hue and a soft glow, and the score ring is painted with the brighter version of the
+gradient. The rest of the panel stays neutral: a saturated wash behind body text would cost
+more in readability than it gains.
+
+**The counts are jump links.** Clicking *high*, *medium*, *low* or *passed* scrolls the report
+to the first check of that kind and flashes it, which matters on a page where sixteen findings
+do not fit on screen at once.
 
 **Every check explains itself.** Click any row, passed or failed, and it expands to say what
 that check looks for and why it matters, in three or four sentences of plain English. The rows
@@ -146,15 +162,14 @@ ring, the rating badge and the findings all share.
   from rendered pixels it ranges from 10.8:1 (dark theme over a light page) to 18.9:1.
 * **The score ring** is an SVG arc with round caps that sweeps up to the score, rather than a
   conic gradient, which cannot round its ends and shows a hard seam.
-* **The verdict gradients** are picked so the text on them keeps its contrast: the cyan, amber
-  and orange ramps are bright and take dark ink, while the red ramp is deep enough to take
-  white. Measured from rendered pixels, the safe pill reads at 9.1:1 and the unsafe pill at
-  6.3:1.
+* **The verdict gradients** run deep enough that white text clears AA on every stop, and each
+  carries a glow in its own bright hue so the colour still reads as cyan or red at a glance.
 * **Motion** is limited to a short panel entrance and the ring sweep, and both are dropped
   entirely under `prefers-reduced-motion`.
 * **Keyboard and screen readers.** Alt+Shift+S opens the report and Escape closes it, every
   control has a visible focus ring, and the report body is a polite live region so a finished
-  scan is announced.
+  scan is announced. The expandable checks are `<details>` elements and the counts are real
+  buttons, so both work from the keyboard without extra code.
 
 ### The 49 tests
 

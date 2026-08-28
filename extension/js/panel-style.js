@@ -143,41 +143,99 @@ window.SSC_PANEL_CSS = `
 .ssc-level--danger  { --ssc-level: var(--ssc-danger);  --ssc-level-ink: var(--ssc-danger-ink);
                       --ssc-level-tint: var(--ssc-tint-danger); }
 
+/*
+ * The ramps run deep enough that white text clears AA on every stop, and each
+ * one carries a bright glow of its own hue. That keeps the cyan reading as
+ * cyan while the label stays legible - a pale gradient with white text looks
+ * striking in a mockup and is unreadable in use.
+ */
 .ssc-level--safe, .ssc-level--ok {
-    --ssc-grad-1: #0ea5e9;
-    --ssc-grad-2: #22d3ee;
-    --ssc-grad-3: #5eead4;
-    --ssc-pill-ink: #04252c;            /* 5.6:1 on the darkest stop */
-    --ssc-pill-ink-2: rgba(4, 37, 44, .72);
+    --ssc-grad-1: #075985;              /* white: 7.6:1 */
+    --ssc-grad-2: #0e7490;              /* white: 5.4:1 */
+    --ssc-grad-3: #0f766e;              /* white: 5.6:1 */
+    --ssc-glow: rgba(34, 211, 238, .8);
+    --ssc-arc-1: #0ea5e9;               /* the ring and the card wash stay bright */
+    --ssc-arc-2: #22d3ee;
+    --ssc-arc-3: #5eead4;
+    --ssc-pill-ink: #ffffff;
+    --ssc-pill-ink-2: rgba(236, 254, 255, .82);
+    --ssc-pill-token: #0b4f5e;
 }
 .ssc-level--caution {
-    --ssc-grad-1: #f59e0b;
-    --ssc-grad-2: #fbbf24;
-    --ssc-grad-3: #fde68a;
-    --ssc-pill-ink: #3b2402;
-    --ssc-pill-ink-2: rgba(59, 36, 2, .72);
+    --ssc-grad-1: #92400e;
+    --ssc-grad-2: #b45309;
+    --ssc-grad-3: #c2740a;              /* white: 4.6:1 */
+    --ssc-glow: rgba(251, 191, 36, .7);
+    --ssc-arc-1: #f59e0b;
+    --ssc-arc-2: #fbbf24;
+    --ssc-arc-3: #fcd34d;
+    --ssc-pill-ink: #ffffff;
+    --ssc-pill-ink-2: rgba(255, 251, 235, .84);
+    --ssc-pill-token: #7c3d06;
 }
 .ssc-level--risky {
-    --ssc-grad-1: #ea580c;
-    --ssc-grad-2: #f97316;
-    --ssc-grad-3: #fb923c;
-    --ssc-pill-ink: #3d1503;
-    --ssc-pill-ink-2: rgba(61, 21, 3, .74);
+    --ssc-grad-1: #9a3412;
+    --ssc-grad-2: #c2410c;
+    --ssc-grad-3: #dd5f14;              /* white: 4.5:1 */
+    --ssc-glow: rgba(251, 146, 60, .7);
+    --ssc-arc-1: #ea580c;
+    --ssc-arc-2: #f97316;
+    --ssc-arc-3: #fb923c;
+    --ssc-pill-ink: #ffffff;
+    --ssc-pill-ink-2: rgba(255, 247, 237, .84);
+    --ssc-pill-token: #7c2d12;
 }
 .ssc-level--danger {
     --ssc-grad-1: #7f1d1d;
     --ssc-grad-2: #b91c1c;
-    --ssc-grad-3: #dc2626;
-    --ssc-pill-ink: #ffffff;            /* 4.5:1 on the lightest stop */
-    --ssc-pill-ink-2: rgba(255, 255, 255, .82);
+    --ssc-grad-3: #dc2626;              /* white: 4.5:1 */
+    --ssc-glow: rgba(248, 113, 113, .7);
+    --ssc-arc-1: #dc2626;
+    --ssc-arc-2: #ef4444;
+    --ssc-arc-3: #f87171;
+    --ssc-pill-ink: #ffffff;
+    --ssc-pill-ink-2: rgba(254, 242, 242, .84);
+    --ssc-pill-token: #7f1d1d;
 }
 
 /* ============================================================ 2. button */
 
-.ssc-button {
+/* the pill and its collapse toggle, anchored together at the corner */
+.ssc-dock {
     position: absolute;
     right: 0;
     bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.ssc-dock__toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    flex: 0 0 auto;
+    padding: 0;
+    border: 1px solid var(--ssc-border-2);
+    border-radius: 50%;
+    background: var(--ssc-glass);
+    -webkit-backdrop-filter: blur(16px) saturate(1.6);
+    backdrop-filter: blur(16px) saturate(1.6);
+    color: var(--ssc-text-3);
+    cursor: pointer;
+    opacity: .55;
+    box-shadow: var(--ssc-shadow-1);
+    transition: opacity .15s var(--ssc-ease), color .15s var(--ssc-ease),
+                border-color .15s var(--ssc-ease);
+}
+.ssc-dock:hover .ssc-dock__toggle { opacity: 1; }
+.ssc-dock__toggle:hover { color: var(--ssc-text); border-color: var(--ssc-accent); }
+.ssc-dock__toggle:focus-visible { opacity: 1; outline: none; box-shadow: var(--ssc-ring); }
+.ssc-dock__toggle svg { width: 12px; height: 12px; display: block; }
+
+.ssc-button {
     display: inline-flex;
     align-items: center;
     gap: 9px;
@@ -215,21 +273,32 @@ window.SSC_PANEL_CSS = `
 /* Once a page has been rated the pill carries the verdict's colour, so the
    result is readable without opening the report. */
 .ssc-button--rated {
-    background: linear-gradient(120deg, var(--ssc-grad-1), var(--ssc-grad-2) 52%, var(--ssc-grad-3));
-    border-color: rgba(255, 255, 255, .28);
+    background:
+        /* a bright rim along the top edge keeps the deep ramp from looking flat */
+        linear-gradient(180deg, rgba(255, 255, 255, .22), rgba(255, 255, 255, 0) 46%),
+        linear-gradient(120deg, var(--ssc-grad-1), var(--ssc-grad-2) 52%, var(--ssc-grad-3));
+    border-color: rgba(255, 255, 255, .22);
     color: var(--ssc-pill-ink);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
+    box-shadow: var(--ssc-shadow-2), 0 10px 30px -10px var(--ssc-glow),
+                inset 0 1px 0 rgba(255, 255, 255, .3);
 }
 
 .ssc-button--rated .ssc-button__lead { color: var(--ssc-pill-ink-2); }
-.ssc-button--rated .ssc-button__mark { color: var(--ssc-pill-ink); }
-.ssc-button--rated:hover { border-color: rgba(255, 255, 255, .55); }
+.ssc-button--rated .ssc-button__mark { color: #fff; }
+.ssc-button--rated:hover {
+    border-color: rgba(255, 255, 255, .5);
+    box-shadow: var(--ssc-shadow-3), 0 12px 32px -8px var(--ssc-glow),
+                inset 0 1px 0 rgba(255, 255, 255, .3);
+}
 
+/* the rating token: a bright disc with the letter cut into the verdict colour */
 .ssc-button--rated .ssc-button__badge {
-    background: var(--ssc-surface);
-    color: var(--ssc-level-ink);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, .22);
+    background: linear-gradient(180deg, #ffffff, #eef2f7);
+    color: var(--ssc-pill-token);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .28), inset 0 0 0 1px rgba(255, 255, 255, .9);
+    letter-spacing: -.02em;
 }
 
 .ssc-button--dragging {
@@ -268,6 +337,32 @@ window.SSC_PANEL_CSS = `
 
 .ssc-button__badge[hidden] { display: none; }
 
+/* collapsed: a circle carrying just the rating */
+.ssc-button--mini {
+    width: 46px;
+    height: 46px;
+    max-width: none;
+    padding: 0;
+    gap: 0;
+    justify-content: center;
+    border-radius: 50%;
+}
+.ssc-button--mini .ssc-button__label { display: none; }
+.ssc-button--mini.ssc-button--has-rating .ssc-button__mark { display: none; }
+.ssc-button--mini .ssc-button__mark { width: 21px; height: 21px; }
+
+/* inside the circle the letter stands alone, without a second disc */
+.ssc-button--mini .ssc-button__badge {
+    width: auto;
+    height: auto;
+    background: none;
+    box-shadow: none;
+    color: var(--ssc-pill-ink, var(--ssc-text));
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -.02em;
+}
+
 .ssc-button__badge {
     display: inline-flex;
     align-items: center;
@@ -281,7 +376,7 @@ window.SSC_PANEL_CSS = `
     font-size: 12px;
     font-weight: 700;
     letter-spacing: 0;
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ssc-level, #888) 18%, transparent);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18), 0 1px 2px rgba(0, 0, 0, .2);
 }
 
 /* ============================================================= 3. panel */
@@ -431,16 +526,24 @@ window.SSC_PANEL_CSS = `
 
 /* ========================================================== 4. verdict */
 
+/* The verdict block carries the result's colour: a diagonal wash of the
+   gradient, an edge in the same hue, and a soft glow underneath. */
 .ssc-summary {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 15px;
-    padding: 15px;
-    border: 1px solid var(--ssc-border);
+    padding: 16px 15px;
+    border: 1px solid color-mix(in srgb, var(--ssc-level, var(--ssc-border-2)) 34%, transparent);
     border-radius: var(--ssc-r-md);
     background:
-        radial-gradient(120% 140% at 100% 0%, var(--ssc-level-tint, transparent) 0%, transparent 62%),
+        linear-gradient(135deg,
+            color-mix(in srgb, var(--ssc-arc-2, var(--ssc-level)) 24%, transparent) 0%,
+            color-mix(in srgb, var(--ssc-arc-3, var(--ssc-level)) 12%, transparent) 46%,
+            transparent 78%),
         var(--ssc-surface-2);
+    box-shadow: 0 8px 24px -14px var(--ssc-glow, transparent),
+                inset 0 1px 0 rgba(255, 255, 255, .05);
 }
 
 .ssc-ring { position: relative; flex: 0 0 auto; width: 84px; height: 84px; }
@@ -518,14 +621,23 @@ window.SSC_PANEL_CSS = `
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    padding: 3px 9px;
+    padding: 4px 10px;
     border: 1px solid var(--ssc-border);
     border-radius: var(--ssc-r-pill);
     background: var(--ssc-surface-2);
     color: var(--ssc-text-2);
-    font-size: 11px;
-    font-weight: 500;
+    font: 500 11px/1.4 var(--ssc-font);
+    cursor: pointer;
+    transition: border-color .15s var(--ssc-ease), background .15s var(--ssc-ease),
+                transform .15s var(--ssc-ease);
 }
+.ssc-tally__item:hover {
+    background: var(--ssc-surface-3);
+    border-color: color-mix(in srgb, var(--ssc-dot, var(--ssc-accent)) 55%, transparent);
+    transform: translateY(-1px);
+}
+.ssc-tally__item:active { transform: none; }
+.ssc-tally__item:focus-visible { outline: none; box-shadow: var(--ssc-ring); }
 .ssc-tally__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ssc-dot, var(--ssc-text-3)); }
 .ssc-tally__item b { color: var(--ssc-text); font-weight: 650; font-variant-numeric: tabular-nums; }
 
@@ -635,6 +747,15 @@ window.SSC_PANEL_CSS = `
 .ssc-item--pass   { --ssc-dot: var(--ssc-safe); --ssc-ink: var(--ssc-safe-ink); }
 .ssc-item--pass .ssc-item__summary { padding: 8px 11px; }
 
+/* a brief ring on whichever check the tally jumped to */
+.ssc-item--flash {
+    animation: ssc-flash 1.3s var(--ssc-ease);
+}
+@keyframes ssc-flash {
+    0%, 100% { box-shadow: 0 0 0 0 transparent; }
+    12%, 55% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ssc-dot) 40%, transparent); }
+}
+
 .ssc-item__dot {
     flex: 0 0 auto;
     width: 8px;
@@ -736,8 +857,9 @@ window.SSC_PANEL_CSS = `
     .ssc-panel { animation: none; }
     .ssc-ring__arc { transition: none; }
     .ssc-spinner { animation-duration: 2s; }
-    .ssc-button, .ssc-item, .ssc-btn, .ssc-icon-btn,
+    .ssc-button, .ssc-item, .ssc-btn, .ssc-icon-btn, .ssc-tally__item,
     .ssc-item__chevron, .ssc-disclosure__chevron { transition: none; }
+    .ssc-item--flash { animation: none; outline: 2px solid var(--ssc-dot); }
 }
 
 `;
