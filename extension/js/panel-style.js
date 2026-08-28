@@ -34,9 +34,9 @@ window.SSC_PANEL_CSS = `
 /* ------------------------------------------------------------- the button */
 
 .ssc-button {
-    position: fixed;
-    right: 18px;
-    bottom: 18px;
+    position: absolute;
+    right: 0;
+    bottom: 0;
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -49,9 +49,18 @@ window.SSC_PANEL_CSS = `
     color: #fff;
     font: 500 13px/1.3 var(--ssc-font);
     letter-spacing: .1px;
-    cursor: pointer;
+    cursor: grab;
+    touch-action: none;                 /* let the drag handler own the gesture */
+    user-select: none;
+    white-space: nowrap;
     box-shadow: 0 6px 20px rgba(15, 23, 42, .28);
     transition: transform .15s ease, box-shadow .15s ease;
+}
+
+.ssc-button--dragging {
+    cursor: grabbing;
+    transition: none;
+    box-shadow: 0 14px 32px rgba(15, 23, 42, .4);
 }
 
 .ssc-button:hover { transform: translateY(-1px); box-shadow: 0 10px 26px rgba(15, 23, 42, .34); }
@@ -97,9 +106,9 @@ window.SSC_PANEL_CSS = `
 /* -------------------------------------------------------------- the panel */
 
 .ssc-panel {
-    position: fixed;
-    right: 18px;
-    bottom: 74px;
+    position: absolute;
+    right: 0;
+    bottom: 46px;                       /* just above the button */
     display: flex;
     flex-direction: column;
     width: 380px;
@@ -114,6 +123,13 @@ window.SSC_PANEL_CSS = `
 }
 
 .ssc-panel[hidden] { display: none; }
+
+/* When the button has been dragged near the top there is no room above it,
+   so the report opens downwards instead. */
+.ssc-panel--below { top: 46px; bottom: auto; }
+
+/* Keep the panel on screen whichever corner the button was dragged to. */
+.ssc-panel--left { right: auto; left: 0; }
 
 .ssc-panel__head {
     display: flex;

@@ -102,6 +102,21 @@ The script then:
   fallback);
 * runs in the top document only, and guards against being injected twice.
 
+### Where the button sits
+
+It starts in the bottom right corner, 100px up from the bottom edge rather than flush with it,
+because many sites pin their own bar down there.
+
+* **It moves out of the way by itself.** On load (and again a second later, for bars that
+  appear late, such as cookie notices) the script hit-tests the point where the button would
+  sit. If a fixed or sticky bar is painted there — a chat app's message box, for example — the
+  button settles just above it instead of covering it.
+* **You can drag it anywhere.** Press and drag the button to any corner; the position is
+  remembered for next time and always wins over the automatic placement. A press that moves
+  less than 4px still counts as a click, so dragging never opens the report by accident.
+* **The report follows.** It normally opens above the button, and flips below or to the right
+  if the button has been dragged near the top or the left edge, so it always stays on screen.
+
 ## 4. Part 2 — the spam test and the safety rating
 
 Pressing the button (or **Alt+Shift+S**) runs all 49 tests and opens a report showing the

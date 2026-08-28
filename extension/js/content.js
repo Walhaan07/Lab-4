@@ -20,9 +20,13 @@
     window.__siteSafetyCheckerLoaded = true;
 
     var HOST_ID = 'site-safety-checker-root';
+    var DEFAULT_POSITION = {right: 18, bottom: 100};
+    var DRAG_THRESHOLD = 4;             // px before a press counts as a drag
     var shadow = null;
     var elements = {};
     var lastReport = null;
+    var position = {right: DEFAULT_POSITION.right, bottom: DEFAULT_POSITION.bottom};
+    var positionIsUserChosen = false;   // a dragged position always wins
 
     /* ------------------------------------------------------------- helpers */
 
@@ -48,10 +52,19 @@
         host.id = HOST_ID;
         // The host element itself is styled inline: nothing on the page can
         // override these, and nothing here can leak onto the page.
-        /* The host is pinned bottom-right inline as well as in the stylesheet:
-           if the styles ever fail to apply, the button is still where the user
-           expects it rather than trailing off the end of the page. */
-        host.style.cssText = 'all: initial; position: fixed; right: 18px; bottom: 18px; ' +
+        /*
+         * The host is a zero-sized anchor box pinned to the viewport; the
+         * button and the panel are positioned against it, so moving the host
+         * is what moves the whole UI.
+         *
+         * It sits 100px up rather than flush with the bottom edge because many
+         * sites put their own fixed bar there - a chat composer, a cookie
+         * notice - and the button would cover it. The user can drag it
+         * anywhere from there.
+         */
+        host.style.cssText = 'all: initial; position: fixed; ' +
+                             'right: ' + DEFAULT_POSITION.right + 'px; ' +
+                             'bottom: ' + DEFAULT_POSITION.bottom + 'px; ' +
                              'width: 0; height: 0; z-index: 2147483647;';
         (document.body || document.documentElement).appendChild(host);
 
@@ -68,7 +81,8 @@
         var button = el('button', 'ssc-button');
         button.type = 'button';
         button.title = 'You are on ' + location.href +
-            '\nClick to run the spam / safety test (Alt+Shift+S)';
+            '\nClick to run the spam / safety test (Alt+Shift+S)' +
+            '\nDrag the button to move it out of the way';
         button.setAttribute('aria-haspopup', 'dialog');
 
         var shield = el('span', 'ssc-button__icon', '🛡');
@@ -258,9 +272,19 @@
 
     /* -------------------------------------------------------------- panel */
 
+    /* The panel normally opens above the button; if it has been dragged near
+       the top or the left edge, the panel flips so it stays on screen. */
+    function placePanel() {
+        var button = elements.button.getBoundingClientRect();
+        var panel = elements.panel;
+        panel.classList.toggle('ssc-panel--below', button.top < 380);
+        panel.classList.toggle('ssc-panel--left', button.left < 380);
+    }
+
     function togglePanel() {
         if (elements.panel.hidden) {
             elements.panel.hidden = false;
+            placePanel();
             elements.button.setAttribute('aria-expanded', 'true');
             runTests(!lastReport);
             if (lastReport) { renderReport(lastReport); }
@@ -272,6 +296,171 @@
     function hidePanel() {
         elements.panel.hidden = true;
         elements.button.setAttribute('aria-expanded', 'false');
+    }
+
+    /* ------------------------------------------------- avoiding page furniture */
+
+    /*
+     * Chat apps, cookie notices and support widgets pin their own bar to the
+     * bottom of the window, and no fixed default can clear all of them. Rather
+     * than guess a larger number, look at what is actually painted at the
+     * bottom of this page: probe the point where the button would sit, walk up
+     * to the first fixed or sticky element, and settle just above it.
+     *
+     * elementsFromPoint keeps this to a couple of hit tests instead of walking
+     * the whole document.
+     */
+    function bottomBarTop() {
+        if (!document.elementsFromPoint) { return null; }
+        var x = clamp(window.innerWidth - 60, 1, window.innerWidth - 1);
+        var probes = [window.innerHeight - 4, window.innerHeight - 28];
+        var highest = null;
+
+        probes.forEach(function (y) {
+            var stack;
+            try {
+                stack = document.elementsFromPoint(x, y) || [];
+            } catch (e) {
+                return;
+            }
+            for (var i = 0; i < stack.length; i++) {
+                var node = stack[i];
+                if (node === elements.host || node === document.body ||
+                    node === document.documentElement) { continue; }
+                var style;
+                try {
+                    style = window.getComputedStyle(node);
+                } catch (e) {
+                    continue;
+                }
+                if (style.position !== 'fixed' && style.position !== 'sticky') { continue; }
+                var box = node.getBoundingClientRect();
+                // A bar along the bottom edge, not a full page overlay.
+                if (box.height > 0 && box.height < window.innerHeight * 0.5 &&
+                    box.bottom > window.innerHeight - 8) {
+                    highest = highest === null ? box.top : Math.min(highest, box.top);
+                }
+                break;                      // the topmost painted layer is enough
+            }
+        });
+        return highest;
+    }
+
+    function avoidBottomBar() {
+        if (positionIsUserChosen) { return; }
+        var top = bottomBarTop();
+        if (top === null) { return; }
+        var wanted = clamp(window.innerHeight - top + 12, DEFAULT_POSITION.bottom, 320);
+        if (Math.abs(wanted - position.bottom) > 2) {
+            setPosition({right: position.right, bottom: wanted});
+        }
+    }
+
+    /* ------------------------------------------------------------ dragging */
+
+    /*
+     * The button can be dragged out of the way: pages put their own fixed
+     * furniture in every corner, so no single default suits every site. The
+     * chosen corner is remembered for next time.
+     */
+    function makeDraggable() {
+        var button = elements.button;
+        var start = null;
+
+        button.addEventListener('pointerdown', function (event) {
+            if (event.button !== 0) { return; }
+            var box = elements.host.getBoundingClientRect();
+            start = {
+                x: event.clientX,
+                y: event.clientY,
+                right: window.innerWidth - box.right,
+                bottom: window.innerHeight - box.bottom,
+                moved: false
+            };
+            button.setPointerCapture(event.pointerId);
+        });
+
+        button.addEventListener('pointermove', function (event) {
+            if (!start) { return; }
+            var dx = event.clientX - start.x;
+            var dy = event.clientY - start.y;
+
+            if (!start.moved && Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) { return; }
+            start.moved = true;
+            button.classList.add('ssc-button--dragging');
+            hidePanel();
+
+            var size = button.getBoundingClientRect();
+            var right = clamp(start.right - dx, 8, Math.max(8, window.innerWidth - size.width - 8));
+            var bottom = clamp(start.bottom - dy, 8, Math.max(8, window.innerHeight - size.height - 8));
+            setPosition({right: right, bottom: bottom});
+        });
+
+        var finish = function (event) {
+            if (!start) { return; }
+            var wasDrag = start.moved;
+            start = null;
+            button.classList.remove('ssc-button--dragging');
+            try { button.releasePointerCapture(event.pointerId); } catch (e) { /* already gone */ }
+            if (wasDrag) {
+                positionIsUserChosen = true;
+                savePosition();
+                // Swallow the click that follows the drag.
+                button.addEventListener('click', function stop(clickEvent) {
+                    clickEvent.stopImmediatePropagation();
+                    button.removeEventListener('click', stop, true);
+                }, true);
+            }
+        };
+
+        button.addEventListener('pointerup', finish);
+        button.addEventListener('pointercancel', finish);
+
+        // Keep the button on screen when the window is resized.
+        window.addEventListener('resize', function () {
+            var size = elements.button.getBoundingClientRect();
+            setPosition({
+                right: clamp(position.right, 8, Math.max(8, window.innerWidth - size.width - 8)),
+                bottom: clamp(position.bottom, 8, Math.max(8, window.innerHeight - size.height - 8))
+            });
+            avoidBottomBar();
+        });
+    }
+
+    function clamp(value, low, high) {
+        return Math.min(high, Math.max(low, value));
+    }
+
+    function setPosition(next) {
+        position = next;
+        elements.host.style.right = next.right + 'px';
+        elements.host.style.bottom = next.bottom + 'px';
+    }
+
+    function savePosition() {
+        try {
+            chrome.storage.local.set({buttonPosition: position}, function () {
+                void chrome.runtime.lastError;
+            });
+        } catch (e) { /* storage unavailable - the position lasts for this page */ }
+    }
+
+    function restorePosition() {
+        try {
+            chrome.storage.local.get({buttonPosition: null}, function (stored) {
+                var saved = stored && stored.buttonPosition;
+                if (!saved || typeof saved.right !== 'number' || typeof saved.bottom !== 'number') {
+                    avoidBottomBar();       // no saved corner: fit around this page
+                    return;
+                }
+                positionIsUserChosen = true;
+                var size = elements.button.getBoundingClientRect();
+                setPosition({
+                    right: clamp(saved.right, 8, Math.max(8, window.innerWidth - size.width - 8)),
+                    bottom: clamp(saved.bottom, 8, Math.max(8, window.innerHeight - size.height - 8))
+                });
+            });
+        } catch (e) { /* storage unavailable - keep the default corner */ }
     }
 
     /* ------------------------------------------- single page app navigation */
@@ -315,7 +504,8 @@
         var label = shadow.querySelector('.ssc-button__url');
         if (label) { label.textContent = '"' + shortUrl(location.href) + '"'; }
         elements.button.title = 'You are on ' + location.href +
-            '\nClick to run the spam / safety test (Alt+Shift+S)';
+            '\nClick to run the spam / safety test (Alt+Shift+S)' +
+            '\nDrag the button to move it out of the way';
     }
 
     /* ------------------------------------------------- popup / preferences */
@@ -354,6 +544,11 @@
 
     function start() {
         buildUi();
+        makeDraggable();
+        restorePosition();
+        /* Bars that appear a moment after load (cookie notices, chat widgets)
+           are picked up by this second look. */
+        window.setTimeout(avoidBottomBar, 1200);
         watchNavigation();
         try {
             chrome.storage.sync.get({showButton: true}, function (prefs) {
