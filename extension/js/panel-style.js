@@ -273,12 +273,21 @@ window.SSC_PANEL_CSS = `
     width: 12px;
     height: 12px;
     display: block;
+    /* one icon that turns, rather than two that swap: a rotation reads as the
+       same control changing state */
     transition: transform var(--ssc-dur) var(--ssc-spring);
 }
+.ssc-dock__toggle--flipped svg { transform: rotate(180deg); }
 .ssc-dock__toggle:hover svg { transform: scale(1.12); }
-.ssc-dock__toggle:active svg { transform: scale(.9); }
+.ssc-dock__toggle--flipped:hover svg { transform: rotate(180deg) scale(1.12); }
+.ssc-dock__toggle:active { transform: scale(.9); }
+.ssc-dock__toggle { transition: opacity var(--ssc-dur-fast) var(--ssc-ease),
+                                color var(--ssc-dur-fast) var(--ssc-ease),
+                                border-color var(--ssc-dur-fast) var(--ssc-ease),
+                                transform var(--ssc-dur-fast) var(--ssc-spring); }
 
 .ssc-button {
+    position: relative;         /* the collapsed letter centres against this */
     display: inline-flex;
     align-items: center;
     gap: 9px;
@@ -318,7 +327,8 @@ window.SSC_PANEL_CSS = `
     box-shadow: var(--ssc-shadow-3);
 }
 
-.ssc-button:active { transform: translateY(0); }
+/* a small give on press, on everything that can be pressed */
+.ssc-button:active:not(.ssc-button--dragging) { transform: scale(.97); }
 .ssc-button:focus-visible { outline: none; box-shadow: var(--ssc-shadow-2), var(--ssc-ring); }
 
 /* Once a page has been rated the pill carries the verdict's colour, so the
@@ -426,16 +436,36 @@ window.SSC_PANEL_CSS = `
 }
 
 /* inside the circle the letter stands alone, without a second disc */
+/*
+ * The collapsed letter is centred against the circle itself rather than laid
+ * out beside its siblings: the folded label still takes part in the flex line
+ * (it carries a negative margin while it folds), so flex centring put the
+ * letter slightly left, and the glyph's own line box put it slightly high.
+ */
 .ssc-button--mini .ssc-button__badge {
+    position: absolute;
+    inset: 0;
     width: auto;
     height: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     background: none;
     box-shadow: none;
     color: var(--ssc-pill-ink, var(--ssc-text));
     font-size: 17px;
     font-weight: 700;
-    letter-spacing: -.02em;
+    line-height: 1;
+    letter-spacing: 0;          /* tracking would shift a single glyph left */
+    text-indent: 0;
 }
+
+@keyframes ssc-pop {
+    0%   { transform: scale(.5); opacity: 0; }
+    70%  { transform: scale(1.12); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+}
+.ssc-button__badge--pop { animation: ssc-pop .42s var(--ssc-spring) both; }
 
 .ssc-button__badge {
     transition: width var(--ssc-dur) var(--ssc-spring),
@@ -558,7 +588,9 @@ window.SSC_PANEL_CSS = `
     background: transparent;
     color: var(--ssc-text-3);
     cursor: pointer;
-    transition: background .15s var(--ssc-ease), color .15s var(--ssc-ease);
+    transition: background var(--ssc-dur-fast) var(--ssc-ease),
+                color var(--ssc-dur-fast) var(--ssc-ease),
+                transform var(--ssc-dur-fast) var(--ssc-spring);
 }
 .ssc-icon-btn:hover { background: var(--ssc-surface-3); color: var(--ssc-text); }
 .ssc-icon-btn:focus-visible { outline: none; box-shadow: var(--ssc-ring); }
@@ -616,6 +648,8 @@ window.SSC_PANEL_CSS = `
     transition: background .15s var(--ssc-ease), border-color .15s var(--ssc-ease);
 }
 .ssc-btn:hover { background: var(--ssc-surface-3); border-color: var(--ssc-accent); }
+.ssc-btn:active { transform: scale(.96); }
+.ssc-icon-btn:active { transform: scale(.9); }
 .ssc-btn:focus-visible { outline: none; box-shadow: var(--ssc-ring); }
 .ssc-btn svg { width: 13px; height: 13px; }
 
@@ -781,7 +815,7 @@ window.SSC_PANEL_CSS = `
     border-color: color-mix(in srgb, var(--ssc-dot, var(--ssc-accent)) 55%, transparent);
     transform: translateY(-1px);
 }
-.ssc-tally__item:active { transform: none; }
+.ssc-tally__item:active { transform: scale(.96); }
 .ssc-tally__item:focus-visible { outline: none; box-shadow: var(--ssc-ring); }
 .ssc-tally__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ssc-dot, var(--ssc-text-3)); }
 .ssc-tally__item b { color: var(--ssc-text); font-weight: 650; font-variant-numeric: tabular-nums; }
@@ -841,6 +875,18 @@ window.SSC_PANEL_CSS = `
 }
 
 .ssc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+
+/* Rows arrive just behind one another rather than all at once. The index is
+   set from script and capped, so a long list still finishes quickly. */
+@keyframes ssc-rise {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: none; }
+}
+
+.ssc-item, .ssc-tally__item {
+    animation: ssc-rise .3s var(--ssc-ease) both;
+    animation-delay: calc(var(--i, 0) * 26ms);
+}
 
 .ssc-item {
     border: 1px solid var(--ssc-border);
@@ -1007,6 +1053,9 @@ window.SSC_PANEL_CSS = `
     .ssc-button, .ssc-item, .ssc-btn, .ssc-icon-btn, .ssc-tally__item,
     .ssc-item__chevron, .ssc-disclosure__chevron { transition: none; }
     .ssc-item--flash { animation: none; outline: 2px solid var(--ssc-dot); }
+    .ssc-item, .ssc-tally__item, .ssc-button__badge--pop { animation: none; }
+    .ssc-button:active, .ssc-btn:active, .ssc-icon-btn:active,
+    .ssc-tally__item:active, .ssc-dock__toggle:active { transform: none; }
 }
 
 `;

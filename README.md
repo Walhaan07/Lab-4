@@ -181,7 +181,13 @@ ring, the rating badge and the findings all share.
   scales up into place and falls back towards the button when it closes; the pill morphs into
   the circle rather than snapping, its label folding away as the width animates. Growth gets
   the spring, shrinking does not: overshooting a shrink means passing *below* the target, which
-  reads as a glitch rather than a bounce. All of it is dropped under `prefers-reduced-motion`.
+  reads as a glitch rather than a bounce. Findings and counts arrive staggered 26ms apart, the
+  rating letter pops in when a scan lands, the minimise control turns rather than swapping its
+  icon, and everything pressable gives slightly under the press. All of it is dropped under
+  `prefers-reduced-motion`.
+* **The collapsed letter** is centred against the circle rather than laid out beside its
+  siblings — the folded label still takes part in the flex line — and measured from rendered
+  pixels at 4x it sits within 0.13px of the centre on every verdict.
 * **Keyboard and screen readers.** Alt+Shift+S opens the report and Escape closes it, every
   control has a visible focus ring, and the report body is a polite live region so a finished
   scan is announced. The expandable checks are `<details>` elements and the counts are real

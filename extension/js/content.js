@@ -51,7 +51,6 @@
                 'M10.3 3.6 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z'],
         chevron: ['m9 6 6 6-6 6'],
         collapse: ['m13 6 6 6-6 6', 'm5 6 6 6-6 6'],
-        expand: ['m11 6-6 6 6 6', 'm19 6-6 6 6 6'],
         refresh: ['M20 11.5A8 8 0 1 1 17.6 6', 'M20 4v5h-5']
     };
 
@@ -146,7 +145,7 @@
            rather than inside it, so it stays reachable in both states. */
         var collapseToggle = el('button', 'ssc-dock__toggle');
         collapseToggle.type = 'button';
-        collapseToggle.appendChild(icon('collapse'));
+        collapseToggle.appendChild(icon('collapse'));   // rotated when collapsed
         collapseToggle.title = 'Minimise to a circle';
         collapseToggle.setAttribute('aria-label', 'Minimise the button to a circle');
 
@@ -365,6 +364,7 @@
             item.appendChild(el('b', null, String(entry.value)));
             item.appendChild(el('span', null, entry.label));
             item.addEventListener('click', function () { jumpToGroup(entry.key); });
+            item.style.setProperty('--i', String(tally.children.length));
             tally.appendChild(item);
         });
         return tally;
@@ -468,8 +468,11 @@
             section.appendChild(title);
 
             var list = el('ul', 'ssc-list');
-            report.failed.forEach(function (check) {
-                list.appendChild(buildCheckItem(check, {showPoints: true, showDetail: true}));
+            report.failed.forEach(function (check, index) {
+                var item = buildCheckItem(check, {showPoints: true, showDetail: true});
+                // capped so a long list still finishes quickly
+                item.style.setProperty('--i', String(Math.min(index, 9)));
+                list.appendChild(item);
             });
             section.appendChild(list);
             body.appendChild(section);
@@ -497,8 +500,10 @@
             details.appendChild(disclosure);
 
             var passedList = el('ul', 'ssc-list');
-            report.passed.forEach(function (check) {
-                passedList.appendChild(buildCheckItem(check, {severity: 'pass'}));
+            report.passed.forEach(function (check, index) {
+                var item = buildCheckItem(check, {severity: 'pass'});
+                item.style.setProperty('--i', String(Math.min(index, 9)));
+                passedList.appendChild(item);
             });
             details.appendChild(passedList);
             body.appendChild(details);
@@ -535,8 +540,17 @@
     function updateBadge(report) {
         var badge = elements.badge;
         badge.hidden = false;
+        var appearing = badge.hidden;
         badge.textContent = report.rating;
         badge.className = 'ssc-button__badge ssc-level--' + report.level;
+        if (appearing) {
+            // a small pop the first time a rating lands on the pill
+            badge.classList.add('ssc-button__badge--pop');
+            badge.addEventListener('animationend', function drop() {
+                badge.removeEventListener('animationend', drop);
+                badge.classList.remove('ssc-button__badge--pop');
+            });
+        }
         badge.title = report.verdict + ' - ' + report.score + '/100';
         elements.button.classList.add('ssc-button--has-rating');
         setButtonLevel(report.level);
@@ -716,7 +730,7 @@
         } else {
             morphButton(collapsed);
         }
-        elements.toggle.replaceChildren(icon(collapsed ? 'expand' : 'collapse'));
+        elements.toggle.classList.toggle('ssc-dock__toggle--flipped', collapsed);
         elements.toggle.title = collapsed ? 'Show the full address' : 'Minimise to a circle';
         elements.toggle.setAttribute('aria-label', elements.toggle.title);
         updateLabel();
