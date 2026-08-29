@@ -88,10 +88,10 @@ window.SSC_PANEL_CSS = `
      * curve instead, because a bounce on the way out reads as indecision.
      */
     --ssc-ease: cubic-bezier(.32, .72, 0, 1);
-    --ssc-spring: cubic-bezier(.34, 1.38, .58, 1);
-    --ssc-exit: cubic-bezier(.4, 0, .7, .2);
-    --ssc-dur: .34s;
-    --ssc-dur-fast: .22s;
+    --ssc-spring: cubic-bezier(.32, 1.26, .5, 1);   /* softer settle */
+    --ssc-exit: cubic-bezier(.36, 0, .66, -.06);
+    --ssc-dur: .42s;
+    --ssc-dur-fast: .26s;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -404,7 +404,17 @@ window.SSC_PANEL_CSS = `
     white-space: nowrap;
 }
 
-.ssc-button__badge[hidden] { display: none; }
+/* Driven by a class, not the hidden attribute: display:none cannot cross-fade,
+   and reserving the slot keeps the pill from jumping wider when a scan lands. */
+.ssc-button__badge {
+    opacity: 0;
+    transform: scale(.4);
+    pointer-events: none;
+}
+.ssc-button--has-rating .ssc-button__badge {
+    opacity: 1;
+    transform: scale(1);
+}
 
 /* collapsed: a circle carrying just the rating */
 .ssc-button--mini {
@@ -414,7 +424,14 @@ window.SSC_PANEL_CSS = `
     padding: 0;
     gap: 0;
     justify-content: center;
-    border-radius: 50%;
+    /*
+     * 999px, not 50%. A percentage radius is relative to the box, so half way
+     * through the shrink a 200x43 box was drawn as an ellipse - the oval that
+     * appeared before it snapped to a circle. A large fixed radius keeps the
+     * shape a stadium the whole way down, and a 46px square with it is a
+     * perfect circle.
+     */
+    border-radius: 999px;
 }
 /* folded away, not removed, so the change can be animated */
 .ssc-button--mini .ssc-button__label {
@@ -422,16 +439,35 @@ window.SSC_PANEL_CSS = `
     opacity: 0;
     margin-inline: -3px;
 }
-.ssc-button--mini.ssc-button--has-rating .ssc-button__mark {
-    max-width: 0;
-    opacity: 0;
-    overflow: hidden;
+
+/*
+ * In the circle both the shield and the rating letter are centred against the
+ * button rather than laid out beside the folded label, which still takes part
+ * in the flex line. They occupy the same spot so one can give way to the
+ * other: the shield shows until the scan lands, then the letter takes over.
+ */
+.ssc-button--mini .ssc-button__mark,
+.ssc-button--mini .ssc-button__badge {
+    position: absolute;
+    inset: 0;
+    width: auto;
+    height: auto;
+    max-width: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
-.ssc-button--mini .ssc-button__mark { width: 21px; height: 21px; }
+.ssc-button--mini .ssc-button__mark svg { width: 21px; height: 21px; }
+
+.ssc-button--mini.ssc-button--has-rating .ssc-button__mark {
+    opacity: 0;
+    transform: scale(.5);
+}
 
 .ssc-button__mark {
     transition: max-width var(--ssc-dur) var(--ssc-ease),
-                opacity var(--ssc-dur-fast) var(--ssc-ease);
+                opacity var(--ssc-dur) var(--ssc-ease),
+                transform var(--ssc-dur) var(--ssc-spring);
     max-width: 24px;
 }
 
@@ -465,12 +501,14 @@ window.SSC_PANEL_CSS = `
     70%  { transform: scale(1.12); opacity: 1; }
     100% { transform: scale(1); opacity: 1; }
 }
-.ssc-button__badge--pop { animation: ssc-pop .42s var(--ssc-spring) both; }
+.ssc-button__badge--pop { animation: ssc-pop .5s var(--ssc-spring) both; }
 
 .ssc-button__badge {
     transition: width var(--ssc-dur) var(--ssc-spring),
                 height var(--ssc-dur) var(--ssc-spring),
                 font-size var(--ssc-dur) var(--ssc-spring),
+                opacity var(--ssc-dur) var(--ssc-ease),
+                transform var(--ssc-dur) var(--ssc-spring),
                 background var(--ssc-dur-fast) var(--ssc-ease),
                 color var(--ssc-dur-fast) var(--ssc-ease);
 }
@@ -527,14 +565,16 @@ window.SSC_PANEL_CSS = `
 .ssc-panel--below.ssc-panel--left { transform-origin: top left; }
 
 @keyframes ssc-in {
-    from { opacity: 0; transform: translateY(10px) scale(.94); }
+    from { opacity: 0; transform: translateY(12px) scale(.92); }
+    60%  { opacity: 1; }
     to   { opacity: 1; transform: none; }
 }
 
-/* Collapses towards the button it came from rather than just fading. */
+/* Sinks back into the button it came from rather than just fading. */
 @keyframes ssc-out {
     from { opacity: 1; transform: none; }
-    to   { opacity: 0; transform: translateY(8px) scale(.96); }
+    40%  { opacity: .55; }
+    to   { opacity: 0; transform: translateY(6px) scale(.95); }
 }
 
 .ssc-panel__head {
@@ -593,6 +633,8 @@ window.SSC_PANEL_CSS = `
                 transform var(--ssc-dur-fast) var(--ssc-spring);
 }
 .ssc-icon-btn:hover { background: var(--ssc-surface-3); color: var(--ssc-text); }
+.ssc-icon-btn svg { transition: transform var(--ssc-dur) var(--ssc-spring); }
+.ssc-panel__close:hover svg { transform: rotate(90deg); }
 .ssc-icon-btn:focus-visible { outline: none; box-shadow: var(--ssc-ring); }
 .ssc-icon-btn svg { width: 15px; height: 15px; display: block; }
 
@@ -879,13 +921,13 @@ window.SSC_PANEL_CSS = `
 /* Rows arrive just behind one another rather than all at once. The index is
    set from script and capped, so a long list still finishes quickly. */
 @keyframes ssc-rise {
-    from { opacity: 0; transform: translateY(6px); }
+    from { opacity: 0; transform: translateY(8px) scale(.99); }
     to   { opacity: 1; transform: none; }
 }
 
 .ssc-item, .ssc-tally__item {
-    animation: ssc-rise .3s var(--ssc-ease) both;
-    animation-delay: calc(var(--i, 0) * 26ms);
+    animation: ssc-rise .38s var(--ssc-ease) both;
+    animation-delay: calc(var(--i, 0) * 28ms);
 }
 
 .ssc-item {

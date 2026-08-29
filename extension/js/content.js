@@ -134,7 +134,6 @@
         label.appendChild(el('span', 'ssc-button__url', '"' + shortUrl(location.href) + '"'));
 
         var badge = el('span', 'ssc-button__badge');
-        badge.hidden = true;
 
         button.appendChild(shield);
         button.appendChild(label);
@@ -157,7 +156,7 @@
         var panel = el('section', 'ssc-panel');
         panel.hidden = true;
         panel.setAttribute('role', 'dialog');
-        panel.setAttribute('aria-label', 'Site safety report');
+        panel.setAttribute('aria-label', 'VeriSafe report');
 
         var header = el('header', 'ssc-panel__head');
 
@@ -165,7 +164,7 @@
         mark.appendChild(icon('shield'));
 
         var heading = el('div', 'ssc-panel__heading');
-        heading.appendChild(el('h2', 'ssc-panel__title', 'Site safety report'));
+        heading.appendChild(el('h2', 'ssc-panel__title', 'VeriSafe report'));
         heading.appendChild(el('p', 'ssc-panel__subtitle', TEST_COUNT + ' checks · runs in this browser'));
 
         var close = el('button', 'ssc-icon-btn ssc-panel__close');
@@ -539,8 +538,7 @@
 
     function updateBadge(report) {
         var badge = elements.badge;
-        badge.hidden = false;
-        var appearing = badge.hidden;
+        var appearing = !elements.button.classList.contains('ssc-button--has-rating');
         badge.textContent = report.rating;
         badge.className = 'ssc-button__badge ssc-level--' + report.level;
         if (appearing) {
@@ -650,7 +648,7 @@
 
         panel.classList.add('ssc-panel--closing');
         panel.addEventListener('animationend', finish);
-        closeTimer = window.setTimeout(finish, 400);
+        closeTimer = window.setTimeout(finish, 520);
     }
 
     /* ---------------------------------------------------------- collapsing */
@@ -700,7 +698,7 @@
          */
         button.style.transitionTimingFunction = toMini
             ? 'cubic-bezier(.32, .72, 0, 1)'
-            : 'cubic-bezier(.34, 1.38, .58, 1)';
+            : 'cubic-bezier(.32, 1.26, .5, 1)';
 
         window.requestAnimationFrame(function () {
             button.classList.toggle('ssc-button--mini', toMini);
@@ -720,7 +718,7 @@
         };
         button.addEventListener('transitionend', done);
         window.clearTimeout(morphTimer);
-        morphTimer = window.setTimeout(done, 650);
+        morphTimer = window.setTimeout(done, 780);
     }
 
     function setCollapsed(next, save, instant) {
@@ -943,7 +941,6 @@
             current = location.href;
             lastReport = null;
             updateLabel();
-            elements.badge.hidden = true;
             elements.button.classList.remove('ssc-button--has-rating');
             setButtonLevel(null);
             // Re-scan the new view so the pill recolours by itself.

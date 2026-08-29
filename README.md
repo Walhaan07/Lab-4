@@ -1,6 +1,6 @@
-# Site Safety Checker — browser extension (Lab 4, Demo 4)
+# VeriSafe — browser extension (Lab 4, Demo 4)
 
-A browser extension that **embeds a button on every page the browser visits**. The button
+VeriSafe is a browser extension that **embeds a button on every page the browser visits**. The button
 displays `You are on "URL"`, and pressing it runs **49 tests** on the current site to decide
 whether it is spam / phishing and to give it a **safety rating (A–F, 0–100)**.
 
@@ -16,8 +16,10 @@ whether it is spam / phishing and to give it a **safety rating (A–F, 0–100)*
 1. Open **`edge://extensions`**.
 2. Turn on **Developer mode** (bottom left).
 3. Click **Load unpacked**.
-4. Select the **`extension`** folder — the one containing `manifest.json`. Do not select the
-   folder above it, and do not select the manifest file itself.
+4. Select the **`VeriSafe`** folder — the one containing `manifest.json`. Do not select the
+   folder above it, and do not select the manifest file itself. (In the repository this folder
+   is called `extension`; the packaged download names it `VeriSafe` so the browser lists it
+   that way.)
 5. Visit any website. The button appears in the bottom right corner; press it to run the scan.
 
 ### To use it on the sample pages (or any page opened from disk)
@@ -25,7 +27,7 @@ whether it is spam / phishing and to give it a **safety rating (A–F, 0–100)*
 Pages opened from disk have a `file:///C:/...` address, and **browsers do not run extensions on
 those unless you allow it**, one extension at a time:
 
-1. On `edge://extensions`, click **Details** on *Site Safety Checker*.
+1. On `edge://extensions`, click **Details** on *VeriSafe*.
 2. Switch on **Allow access to file URLs**.
 3. Reload the page you are testing.
 

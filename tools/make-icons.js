@@ -1,9 +1,10 @@
 /*
- * make-icons.js -- generates the extension PNG icons with plain Node.js.
+ * make-icons.js -- generates VeriSafe's PNG icons with plain Node.js.
  * Run with:  npm run icons
  *
- * Draws a violet shield disc with a white tick, anti-aliased by 4x
- * supersampling, and writes a valid PNG using only the built-in zlib module.
+ * Draws the VeriSafe mark - a white shield with a check knocked out of it, on
+ * a blue ground - anti-aliased by 4x supersampling, and writes a valid PNG
+ * using only the built-in zlib module.
  */
 'use strict';
 
@@ -17,39 +18,69 @@ const SS = 4;                                   // supersampling factor
 
 /* ---------------------------------------------------------------- drawing */
 
+/*
+ * VeriSafe's mark: a white shield with a check cut out of it, on a blue
+ * ground. Drawn analytically and supersampled rather than traced from a
+ * bitmap, so it stays crisp at 16px where a scaled-down photo would mush.
+ */
+
+/** Half-width of the shield at height v, in unit coordinates. */
+function shieldHalfWidth(v) {
+    const TOP = 0.185;         // flat top edge
+    const SHOULDER = 0.275;    // where the rounded corners finish
+    const WAIST = 0.50;        // straight sides down to here
+    const TIP = 0.855;         // the point at the bottom
+    const HALF = 0.30;
+
+    if (v < TOP || v > TIP) { return 0; }
+    if (v < SHOULDER) {                          // rounded upper corners
+        const t = (SHOULDER - v) / (SHOULDER - TOP);
+        return HALF * Math.sqrt(Math.max(0, 1 - t * t));
+    }
+    if (v < WAIST) { return HALF; }
+
+    /* Below the waist a single superellipse: the sides stay nearly straight
+       for the first stretch and then sweep in to a point. A piecewise taper
+       put a visible hip where the two pieces met. */
+    const t = (v - WAIST) / (TIP - WAIST);
+    return HALF * Math.pow(Math.max(0, 1 - Math.pow(t, 2.2)), 0.55);
+}
+
 function distanceToSegment(px, py, ax, ay, bx, by) {
     const dx = bx - ax;
     const dy = by - ay;
     const len2 = dx * dx + dy * dy;
     let t = len2 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
     t = Math.max(0, Math.min(1, t));
-    const cx = ax + t * dx;
-    const cy = ay + t * dy;
-    return Math.hypot(px - cx, py - cy);
+    return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }
 
 /** Colour of one sample point, in unit coordinates (0..1). */
 function sample(u, v) {
-    const dx = u - 0.5;
-    const dy = v - 0.5;
-    const inDisc = Math.hypot(dx, dy) <= 0.47;
-    if (!inDisc) { return null; }
+    // rounded-square ground with a blue gradient
+    const r = 0.22;
+    const cx = Math.min(Math.max(u, r), 1 - r);
+    const cy = Math.min(Math.max(v, r), 1 - r);
+    if (Math.hypot(u - cx, v - cy) > r) { return null; }
 
-    // white tick
-    const stroke = 0.055;
-    const d = Math.min(
-        distanceToSegment(u, v, 0.30, 0.52, 0.44, 0.66),
-        distanceToSegment(u, v, 0.44, 0.66, 0.72, 0.34)
-    );
-    if (d <= stroke) { return [255, 255, 255]; }
-
-    // vertical indigo -> violet gradient
-    const t = v;
-    return [
-        Math.round(79 + (124 - 79) * t),
-        Math.round(70 + (58 - 70) * t),
-        Math.round(229 + (237 - 229) * t)
+    const ground = [
+        Math.round(29 + (17 - 29) * v),
+        Math.round(111 + (74 - 111) * v),
+        Math.round(165 + (122 - 165) * v)
     ];
+
+    const inShield = Math.abs(u - 0.5) <= shieldHalfWidth(v);
+    if (!inShield) { return ground; }
+
+    // the check is cut back out of the shield
+    const stroke = 0.048;
+    const check = Math.min(
+        distanceToSegment(u, v, 0.385, 0.495, 0.468, 0.583),
+        distanceToSegment(u, v, 0.468, 0.583, 0.632, 0.395)
+    );
+    if (check <= stroke) { return ground; }
+
+    return [255, 255, 255];
 }
 
 function renderRgba(size) {
