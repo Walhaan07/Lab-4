@@ -81,7 +81,17 @@ window.SSC_PANEL_CSS = `
     --ssc-shadow-3: 0 28px 64px -16px rgba(15, 23, 42, .30), 0 10px 26px -12px rgba(15, 23, 42, .18);
     --ssc-ring: 0 0 0 3px rgba(79, 70, 229, .35);
 
-    --ssc-ease: cubic-bezier(.22, 1, .36, 1);
+    /*
+     * Motion curves. The first is the one Apple uses for sheets and popovers -
+     * a fast start that settles rather than easing symmetrically. The spring
+     * adds a small overshoot for things that appear; exits use an accelerating
+     * curve instead, because a bounce on the way out reads as indecision.
+     */
+    --ssc-ease: cubic-bezier(.32, .72, 0, 1);
+    --ssc-spring: cubic-bezier(.34, 1.38, .58, 1);
+    --ssc-exit: cubic-bezier(.4, 0, .7, .2);
+    --ssc-dur: .34s;
+    --ssc-dur-fast: .22s;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -259,7 +269,14 @@ window.SSC_PANEL_CSS = `
 .ssc-dock:hover .ssc-dock__toggle { opacity: 1; }
 .ssc-dock__toggle:hover { color: var(--ssc-text); border-color: var(--ssc-accent); }
 .ssc-dock__toggle:focus-visible { opacity: 1; outline: none; box-shadow: var(--ssc-ring); }
-.ssc-dock__toggle svg { width: 12px; height: 12px; display: block; }
+.ssc-dock__toggle svg {
+    width: 12px;
+    height: 12px;
+    display: block;
+    transition: transform var(--ssc-dur) var(--ssc-spring);
+}
+.ssc-dock__toggle:hover svg { transform: scale(1.12); }
+.ssc-dock__toggle:active svg { transform: scale(.9); }
 
 .ssc-button {
     display: inline-flex;
@@ -282,9 +299,17 @@ window.SSC_PANEL_CSS = `
     touch-action: none;
     user-select: none;
     white-space: nowrap;
+    overflow: hidden;
     box-shadow: var(--ssc-shadow-2);
-    transition: transform .18s var(--ssc-ease), box-shadow .18s var(--ssc-ease),
-                border-color .18s var(--ssc-ease);
+    /* width and height are driven from script so the pill can morph into the
+       circle; everything else rides the same curve */
+    transition: width var(--ssc-dur) var(--ssc-spring),
+                height var(--ssc-dur) var(--ssc-spring),
+                padding var(--ssc-dur) var(--ssc-spring),
+                transform var(--ssc-dur-fast) var(--ssc-ease),
+                box-shadow var(--ssc-dur-fast) var(--ssc-ease),
+                border-color var(--ssc-dur-fast) var(--ssc-ease),
+                background-color var(--ssc-dur) var(--ssc-ease);
 }
 
 .ssc-button:hover {
@@ -327,6 +352,9 @@ window.SSC_PANEL_CSS = `
     letter-spacing: -.02em;
 }
 
+/* Used for one frame while the target size is measured. */
+.ssc-measuring, .ssc-measuring * { transition: none !important; }
+
 .ssc-button--dragging {
     cursor: grabbing;
     transition: none;
@@ -349,6 +377,11 @@ window.SSC_PANEL_CSS = `
     gap: 6px;
     min-width: 0;
     line-height: 1.45;      /* keeps descenders inside the clipping box */
+    max-width: 400px;
+    opacity: 1;
+    transition: max-width var(--ssc-dur) var(--ssc-ease),
+                opacity var(--ssc-dur-fast) var(--ssc-ease),
+                margin var(--ssc-dur) var(--ssc-ease);
 }
 
 .ssc-button__lead { color: var(--ssc-text-3); font-weight: 500; }
@@ -373,9 +406,24 @@ window.SSC_PANEL_CSS = `
     justify-content: center;
     border-radius: 50%;
 }
-.ssc-button--mini .ssc-button__label { display: none; }
-.ssc-button--mini.ssc-button--has-rating .ssc-button__mark { display: none; }
+/* folded away, not removed, so the change can be animated */
+.ssc-button--mini .ssc-button__label {
+    max-width: 0;
+    opacity: 0;
+    margin-inline: -3px;
+}
+.ssc-button--mini.ssc-button--has-rating .ssc-button__mark {
+    max-width: 0;
+    opacity: 0;
+    overflow: hidden;
+}
 .ssc-button--mini .ssc-button__mark { width: 21px; height: 21px; }
+
+.ssc-button__mark {
+    transition: max-width var(--ssc-dur) var(--ssc-ease),
+                opacity var(--ssc-dur-fast) var(--ssc-ease);
+    max-width: 24px;
+}
 
 /* inside the circle the letter stands alone, without a second disc */
 .ssc-button--mini .ssc-button__badge {
@@ -387,6 +435,14 @@ window.SSC_PANEL_CSS = `
     font-size: 17px;
     font-weight: 700;
     letter-spacing: -.02em;
+}
+
+.ssc-button__badge {
+    transition: width var(--ssc-dur) var(--ssc-spring),
+                height var(--ssc-dur) var(--ssc-spring),
+                font-size var(--ssc-dur) var(--ssc-spring),
+                background var(--ssc-dur-fast) var(--ssc-ease),
+                color var(--ssc-dur-fast) var(--ssc-ease);
 }
 
 .ssc-button__badge {
@@ -424,7 +480,14 @@ window.SSC_PANEL_CSS = `
     box-shadow: var(--ssc-shadow-3);
     overflow: hidden;
     transform-origin: bottom right;
-    animation: ssc-in .24s var(--ssc-ease) both;
+    animation: ssc-in var(--ssc-dur) var(--ssc-spring) both;
+    will-change: transform, opacity;
+}
+
+/* Held open while the exit plays; content.js removes it on animationend. */
+.ssc-panel--closing {
+    animation: ssc-out var(--ssc-dur-fast) var(--ssc-exit) both;
+    pointer-events: none;
 }
 
 .ssc-panel[hidden] { display: none; }
@@ -434,8 +497,14 @@ window.SSC_PANEL_CSS = `
 .ssc-panel--below.ssc-panel--left { transform-origin: top left; }
 
 @keyframes ssc-in {
-    from { opacity: 0; transform: translateY(6px) scale(.98); }
+    from { opacity: 0; transform: translateY(10px) scale(.94); }
     to   { opacity: 1; transform: none; }
+}
+
+/* Collapses towards the button it came from rather than just fading. */
+@keyframes ssc-out {
+    from { opacity: 1; transform: none; }
+    to   { opacity: 0; transform: translateY(8px) scale(.96); }
 }
 
 .ssc-panel__head {
@@ -930,7 +999,9 @@ window.SSC_PANEL_CSS = `
 .ssc-skipped { margin: 12px 0 0; color: var(--ssc-text-3); font-size: 10.5px; }
 
 @media (prefers-reduced-motion: reduce) {
-    .ssc-panel { animation: none; }
+    .ssc-panel, .ssc-panel--closing { animation: none; }
+    .ssc-button, .ssc-button__label, .ssc-button__mark, .ssc-button__badge,
+    .ssc-dock__toggle svg { transition: none; }
     .ssc-ring__arc { transition: none; }
     .ssc-spinner { animation-duration: 2s; }
     .ssc-button, .ssc-item, .ssc-btn, .ssc-icon-btn, .ssc-tally__item,

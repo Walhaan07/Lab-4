@@ -62,9 +62,11 @@ extension/                  <-- load THIS folder as an unpacked extension
     ├── background.js       service worker: toolbar badge, per-tab results
     └── popup.js            toolbar popup logic
 
-test-pages/                 two self-contained pages for demonstrating it
-├── safe-sample.html        clean page      - rates A
-└── spam-sample.html        mock spam page  - rates F with 16+ warnings
+test-pages/                 four self-contained pages, one per rating band
+├── safe-sample.html        clean page          - rates A (100)
+├── caution-sample.html     pushy shop page     - rates C (72)
+├── risky-sample.html       mock rewards page   - rates D (50)
+└── spam-sample.html        mock spam page      - rates F (21, 16 findings)
 test/analyzer.test.js       22 unit tests (Node.js, optional)
 tools/make-icons.js         regenerates the PNG icons (optional)
 ```
@@ -135,8 +137,8 @@ rendered pixels at the text's own height, the safe pill reads 5.25:1 and the uns
 4.69:1, and every piece of text on the rating block stays at 5.1:1 or better.
 
 **Minimising.** A long address makes a wide pill, so the control beside it collapses everything
-to a circle showing just the rating letter — the report closes with it — and expands it again.
-The choice is remembered.
+to a circle showing just the rating letter — the report animates closed alongside it — and
+expands it again. The choice is remembered.
 
 **The rating block** in the report is painted with the same gradient as the pill, not a wash of
 it — a translucent tint over a dark panel turns any bright colour to mud, which is why the
@@ -174,8 +176,12 @@ ring, the rating badge and the findings all share.
   conic gradient, which cannot round its ends and shows a hard seam.
 * **The verdict gradients** run deep enough that white text clears AA on every stop, and each
   carries a glow in its own bright hue so the colour still reads as cyan or red at a glance.
-* **Motion** is limited to a short panel entrance and the ring sweep, and both are dropped
-  entirely under `prefers-reduced-motion`.
+* **Motion** follows the curves Apple uses for sheets and popovers — a fast start that settles,
+  `cubic-bezier(.32, .72, 0, 1)`, with a small overshoot on anything that appears. The report
+  scales up into place and falls back towards the button when it closes; the pill morphs into
+  the circle rather than snapping, its label folding away as the width animates. Growth gets
+  the spring, shrinking does not: overshooting a shrink means passing *below* the target, which
+  reads as a glitch rather than a bounce. All of it is dropped under `prefers-reduced-motion`.
 * **Keyboard and screen readers.** Alt+Shift+S opens the report and Escape closes it, every
   control has a visible focus ring, and the report body is a polite live region so a finished
   scan is announced. The expandable checks are `<details>` elements and the counts are real
@@ -286,9 +292,16 @@ Three ideas make the number meaningful:
 ## 5. Demonstrating it
 
 1. Load the extension (section 1).
-2. Turn on *Allow access to file URLs* (section 1), then open `test-pages/safe-sample.html`
-   and `test-pages/spam-sample.html` in the browser and press the button on each. The clean
-   page rates **A** with no warnings; the mock spam page rates **F** with 16 warnings.
+2. Turn on *Allow access to file URLs* (section 1), then open the four pages in `test-pages/`
+   and press the button on each. They are built to land in a different band apiece, so you can
+   show every colour without hunting for a real site that misbehaves:
+
+   | Page | Score | Rating |
+   |---|---|---|
+   | `safe-sample.html` | 100 | **A** — Safe, no findings |
+   | `caution-sample.html` | 72 | **C** — Use caution, 8 findings |
+   | `risky-sample.html` | 50 | **D** — Suspicious, 11 findings |
+   | `spam-sample.html` | 21 | **F** — Likely spam, 16 findings |
 3. Press the button on any real website to show it working on live pages.
 
 `spam-sample.html` is a harmless mock: the form target does not exist, the "download" link

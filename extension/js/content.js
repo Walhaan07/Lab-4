@@ -30,6 +30,7 @@
     var position = {right: DEFAULT_POSITION.right, bottom: DEFAULT_POSITION.bottom};
     var positionIsUserChosen = false;   // a dragged position always wins
     var collapsed = false;              // pill shown as a circle
+    var morphTimer = null;
 
     /* ------------------------------------------------------------- helpers */
 
@@ -600,7 +601,11 @@
     }
 
     function togglePanel() {
-        if (elements.panel.hidden) {
+        var closing = elements.panel.classList.contains('ssc-panel--closing');
+        if (elements.panel.hidden || closing) {
+            // re-opening during the exit: drop the exit and play the entrance
+            window.clearTimeout(closeTimer);
+            elements.panel.classList.remove('ssc-panel--closing');
             elements.panel.hidden = false;
             placePanel();
             elements.button.setAttribute('aria-expanded', 'true');
@@ -611,9 +616,27 @@
         }
     }
 
+    /*
+     * Closing plays an exit animation first. The panel keeps its box until the
+     * animation ends, so the class is removed and `hidden` set in the same
+     * callback; a guard covers the case where the animation never fires (a
+     * background tab, or reduced motion turning it off).
+     */
     function hidePanel() {
-        elements.panel.hidden = true;
+        var panel = elements.panel;
         elements.button.setAttribute('aria-expanded', 'false');
+        if (panel.hidden || panel.classList.contains('ssc-panel--closing')) { return; }
+
+        var finish = function () {
+            window.clearTimeout(closeTimer);
+            panel.removeEventListener('animationend', finish);
+            panel.classList.remove('ssc-panel--closing');
+            panel.hidden = true;
+        };
+
+        panel.classList.add('ssc-panel--closing');
+        panel.addEventListener('animationend', finish);
+        closeTimer = window.setTimeout(finish, 400);
     }
 
     /* ---------------------------------------------------------- collapsing */
@@ -623,9 +646,76 @@
      * @param {boolean} next   whether to collapse
      * @param {boolean} save   whether to remember the choice
      */
-    function setCollapsed(next, save) {
+    /*
+     * Morphs the pill between its two shapes. The width and height are
+     * measured in both states and animated between them, because a transition
+     * cannot interpolate from a content-driven size to a fixed one - the
+     * element would simply jump.
+     */
+    function morphButton(toMini) {
+        var button = elements.button;
+        var start = button.getBoundingClientRect();
+
+        /*
+         * Measure the target with the final class applied and every transition
+         * in the subtree switched off, then put it back before animating. The
+         * label folds with its own max-width transition, so measuring while
+         * that was still running reported the collapsed width for an expand
+         * and the pill snapped at the end instead of arriving.
+         */
+        button.classList.add('ssc-measuring');
+        button.classList.toggle('ssc-button--mini', toMini);
+        /* Clear the inline size rather than setting it to auto: the circle
+           takes its 46px from the stylesheet, and "auto" overrode that, so the
+           morph was aiming at the content width - about 11px - and only
+           reached 46 afterwards when the inline value was dropped. */
+        button.style.width = '';
+        button.style.height = '';
+        var end = button.getBoundingClientRect();
+
+        button.classList.toggle('ssc-button--mini', !toMini);   // back to the start state
+        button.style.width = start.width + 'px';
+        button.style.height = start.height + 'px';
+        void button.offsetWidth;                                 // flush
+        button.classList.remove('ssc-measuring');
+
+        /*
+         * The spring is only used for growth. Overshooting a shrink means
+         * passing below the target - collapsing 383px to 46px dipped to 2px
+         * and sprang back, which reads as a glitch rather than a bounce.
+         */
+        button.style.transitionTimingFunction = toMini
+            ? 'cubic-bezier(.32, .72, 0, 1)'
+            : 'cubic-bezier(.34, 1.38, .58, 1)';
+
+        window.requestAnimationFrame(function () {
+            button.classList.toggle('ssc-button--mini', toMini);
+            button.style.width = end.width + 'px';
+            button.style.height = end.height + 'px';
+        });
+
+        var done = function (event) {
+            // transitionend fires per property; only the width settles the shape
+            if (event && (event.target !== button || event.propertyName !== 'width')) { return; }
+            window.clearTimeout(morphTimer);
+            button.removeEventListener('transitionend', done);
+            // hand the size back to the stylesheet once it has arrived
+            button.style.width = '';
+            button.style.height = '';
+            button.style.transitionTimingFunction = '';
+        };
+        button.addEventListener('transitionend', done);
+        window.clearTimeout(morphTimer);
+        morphTimer = window.setTimeout(done, 650);
+    }
+
+    function setCollapsed(next, save, instant) {
         collapsed = !!next;
-        elements.button.classList.toggle('ssc-button--mini', collapsed);
+        if (instant) {
+            elements.button.classList.toggle('ssc-button--mini', collapsed);
+        } else {
+            morphButton(collapsed);
+        }
         elements.toggle.replaceChildren(icon(collapsed ? 'expand' : 'collapse'));
         elements.toggle.title = collapsed ? 'Show the full address' : 'Minimise to a circle';
         elements.toggle.setAttribute('aria-label', elements.toggle.title);
@@ -648,7 +738,7 @@
     function restoreCollapsed() {
         try {
             chrome.storage.local.get({buttonCollapsed: false}, function (stored) {
-                if (stored && stored.buttonCollapsed) { setCollapsed(true, false); }
+                if (stored && stored.buttonCollapsed) { setCollapsed(true, false, true); }
             });
         } catch (e) { /* storage unavailable - stay expanded */ }
     }
@@ -829,6 +919,7 @@
      * the previous view. Watch for that and reset.
      */
     var rescanTimer = null;
+    var closeTimer = null;
 
     function watchNavigation() {
         var current = location.href;
