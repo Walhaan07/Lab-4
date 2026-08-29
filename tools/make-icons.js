@@ -1,8 +1,8 @@
 /*
- * make-icons.js -- generates VeriSafe's PNG icons with plain Node.js.
+ * make-icons.js -- generates VeriSite's PNG icons with plain Node.js.
  * Run with:  npm run icons
  *
- * Draws the VeriSafe mark - a white shield with a check knocked out of it, on
+ * Draws the VeriSite mark - a white shield with a check knocked out of it, on
  * a blue ground - anti-aliased by 4x supersampling, and writes a valid PNG
  * using only the built-in zlib module.
  */
@@ -19,7 +19,7 @@ const SS = 4;                                   // supersampling factor
 /* ---------------------------------------------------------------- drawing */
 
 /*
- * VeriSafe's mark: a white shield with a check cut out of it, on a blue
+ * VeriSite's mark: a white shield with a check cut out of it, on a blue
  * ground. Drawn analytically and supersampled rather than traced from a
  * bitmap, so it stays crisp at 16px where a scaled-down photo would mush.
  */

@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "VeriSafe",
+  "name": "VeriSite",
   "version": "1.1.0",
   "description": "Embeds a button on every page that shows the current URL and rates the site for spam / phishing using 49 tests.",
   "permissions": [
@@ -16,7 +16,7 @@
     "service_worker": "js/background.js"
   },
   "action": {
-    "default_title": "VeriSafe",
+    "default_title": "VeriSite",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",

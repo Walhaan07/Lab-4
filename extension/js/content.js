@@ -156,7 +156,7 @@
         var panel = el('section', 'ssc-panel');
         panel.hidden = true;
         panel.setAttribute('role', 'dialog');
-        panel.setAttribute('aria-label', 'VeriSafe report');
+        panel.setAttribute('aria-label', 'VeriSite report');
 
         var header = el('header', 'ssc-panel__head');
 
@@ -164,7 +164,7 @@
         mark.appendChild(icon('shield'));
 
         var heading = el('div', 'ssc-panel__heading');
-        heading.appendChild(el('h2', 'ssc-panel__title', 'VeriSafe report'));
+        heading.appendChild(el('h2', 'ssc-panel__title', 'VeriSite report'));
         heading.appendChild(el('p', 'ssc-panel__subtitle', TEST_COUNT + ' checks · runs in this browser'));
 
         var close = el('button', 'ssc-icon-btn ssc-panel__close');
@@ -610,6 +610,35 @@
         var room = openBelow ? roomBelow : roomAbove;
         var ceiling = Math.min(640, window.innerHeight - 24);
         panel.style.maxHeight = Math.round(clamp(room, Math.min(200, ceiling), ceiling)) + 'px';
+
+        setPanelOrigin();
+    }
+
+    /*
+     * Anchors the report's growth to the middle of the button, so it appears to
+     * come out of whatever the button currently is - the full pill or the
+     * collapsed circle - and drop back into it on the way out. Measured from
+     * the live boxes rather than fixed to a corner, so it follows the button
+     * after a drag or a collapse without any special cases.
+     */
+    function setPanelOrigin() {
+        var panel = elements.panel;
+        if (!panel.offsetWidth) { return; }
+
+        /*
+         * Offset geometry, not getBoundingClientRect: the entrance animation
+         * fills backwards, so the panel already carries scale(.72) by the time
+         * this runs and a measured rect would be the shrunken one. offsetLeft
+         * and friends report the layout box and ignore transforms.
+         *
+         * The panel's offset parent is the host; the button sits inside the
+         * dock, which is positioned, so its offsets are added together.
+         */
+        var buttonX = elements.dock.offsetLeft + elements.button.offsetLeft;
+        var buttonY = elements.dock.offsetTop + elements.button.offsetTop;
+        var ox = buttonX + elements.button.offsetWidth / 2 - panel.offsetLeft;
+        var oy = buttonY + elements.button.offsetHeight / 2 - panel.offsetTop;
+        panel.style.transformOrigin = Math.round(ox) + 'px ' + Math.round(oy) + 'px';
     }
 
     function togglePanel() {
@@ -639,13 +668,18 @@
         elements.button.setAttribute('aria-expanded', 'false');
         if (panel.hidden || panel.classList.contains('ssc-panel--closing')) { return; }
 
-        var finish = function () {
+        var finish = function (event) {
+            /* animationend bubbles: the staggered rows inside the panel each
+               fire one, and closing while they are still arriving would
+               otherwise hide the panel before its own exit had played. */
+            if (event && (event.target !== panel || event.animationName !== 'ssc-out')) { return; }
             window.clearTimeout(closeTimer);
             panel.removeEventListener('animationend', finish);
             panel.classList.remove('ssc-panel--closing');
             panel.hidden = true;
         };
 
+        setPanelOrigin();                 // the button may have moved or changed shape
         panel.classList.add('ssc-panel--closing');
         panel.addEventListener('animationend', finish);
         closeTimer = window.setTimeout(finish, 520);

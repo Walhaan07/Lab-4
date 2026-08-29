@@ -81,7 +81,7 @@ function paintBadge(tabId, report) {
     chrome.action.setBadgeBackgroundColor({tabId, color: colour}).catch(() => {});
     chrome.action.setTitle({
         tabId,
-        title: `VeriSafe\n${report.verdict} - score ${report.score}/100`
+        title: `VeriSite\n${report.verdict} - score ${report.score}/100`
     }).catch(() => {});
 }
 

@@ -1,6 +1,6 @@
-# VeriSafe — browser extension (Lab 4, Demo 4)
+# VeriSite — browser extension (Lab 4, Demo 4)
 
-VeriSafe is a browser extension that **embeds a button on every page the browser visits**. The button
+VeriSite is a browser extension that **embeds a button on every page the browser visits**. The button
 displays `You are on "URL"`, and pressing it runs **49 tests** on the current site to decide
 whether it is spam / phishing and to give it a **safety rating (A–F, 0–100)**.
 
@@ -16,9 +16,9 @@ whether it is spam / phishing and to give it a **safety rating (A–F, 0–100)*
 1. Open **`edge://extensions`**.
 2. Turn on **Developer mode** (bottom left).
 3. Click **Load unpacked**.
-4. Select the **`VeriSafe`** folder — the one containing `manifest.json`. Do not select the
+4. Select the **`VeriSite`** folder — the one containing `manifest.json`. Do not select the
    folder above it, and do not select the manifest file itself. (In the repository this folder
-   is called `extension`; the packaged download names it `VeriSafe` so the browser lists it
+   is called `extension`; the packaged download names it `VeriSite` so the browser lists it
    that way.)
 5. Visit any website. The button appears in the bottom right corner; press it to run the scan.
 
@@ -27,7 +27,7 @@ whether it is spam / phishing and to give it a **safety rating (A–F, 0–100)*
 Pages opened from disk have a `file:///C:/...` address, and **browsers do not run extensions on
 those unless you allow it**, one extension at a time:
 
-1. On `edge://extensions`, click **Details** on *VeriSafe*.
+1. On `edge://extensions`, click **Details** on *VeriSite*.
 2. Switch on **Allow access to file URLs**.
 3. Reload the page you are testing.
 
@@ -178,6 +178,11 @@ ring, the rating badge and the findings all share.
   conic gradient, which cannot round its ends and shows a hard seam.
 * **The verdict gradients** run deep enough that white text clears AA on every stop, and each
   carries a glow in its own bright hue so the colour still reads as cyan or red at a glance.
+* **The report grows out of the button and drops back into it.** Its transform origin is set
+  from script to the middle of the button, measured from layout geometry rather than a rect
+  (the entrance animation fills backwards, so a measured rect would already be the shrunken
+  one). That makes it follow whichever shape the button currently has — the full pill or the
+  collapsed circle — and keep tracking it after a drag, with no special cases.
 * **Motion** follows the curves Apple uses for sheets and popovers — a fast start that settles,
   `cubic-bezier(.32, .72, 0, 1)`, with a small overshoot on anything that appears. The report
   scales up into place and falls back towards the button when it closes; the pill morphs into

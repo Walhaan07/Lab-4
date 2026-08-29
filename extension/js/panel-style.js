@@ -89,7 +89,10 @@ window.SSC_PANEL_CSS = `
      */
     --ssc-ease: cubic-bezier(.32, .72, 0, 1);
     --ssc-spring: cubic-bezier(.32, 1.26, .5, 1);   /* softer settle */
-    --ssc-exit: cubic-bezier(.36, 0, .66, -.06);
+    /* Accelerates away without stalling first: an exit weighted too far to the
+       end leaves the panel hanging for most of its duration and then blinking
+       out. This one is 10% along at a quarter of the way, 35% at half. */
+    --ssc-exit: cubic-bezier(.42, .06, .62, .6);
     --ssc-dur: .42s;
     --ssc-dur-fast: .26s;
 }
@@ -547,7 +550,7 @@ window.SSC_PANEL_CSS = `
     font: 400 13px/1.55 var(--ssc-font);
     box-shadow: var(--ssc-shadow-3);
     overflow: hidden;
-    transform-origin: bottom right;
+    transform-origin: bottom right;   /* replaced with the button's centre */
     animation: ssc-in var(--ssc-dur) var(--ssc-spring) both;
     will-change: transform, opacity;
 }
@@ -564,17 +567,23 @@ window.SSC_PANEL_CSS = `
 .ssc-panel--left  { right: auto; left: 0; transform-origin: bottom left; }
 .ssc-panel--below.ssc-panel--left { transform-origin: top left; }
 
+/*
+ * The origin is set from script to the middle of the button, so these two
+ * scale the report out of it and back into it. The opacity is deliberately
+ * out of step with the scale: it arrives early on the way in so the panel is
+ * readable while it is still settling, and leaves early on the way out so
+ * nothing lingers as a ghost while it shrinks.
+ */
 @keyframes ssc-in {
-    from { opacity: 0; transform: translateY(12px) scale(.92); }
-    60%  { opacity: 1; }
+    from { opacity: 0; transform: scale(.72); }
+    45%  { opacity: 1; }
     to   { opacity: 1; transform: none; }
 }
 
-/* Sinks back into the button it came from rather than just fading. */
 @keyframes ssc-out {
     from { opacity: 1; transform: none; }
-    40%  { opacity: .55; }
-    to   { opacity: 0; transform: translateY(6px) scale(.95); }
+    65%  { opacity: .12; }
+    to   { opacity: 0; transform: scale(.74); }
 }
 
 .ssc-panel__head {
