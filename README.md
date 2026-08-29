@@ -141,10 +141,13 @@ The choice is remembered.
 **The rating block** in the report is painted with the same gradient as the pill, not a wash of
 it — a translucent tint over a dark panel turns any bright colour to mud, which is why the
 alarm red read as plum there while the pill was vivid. Text on the block switches to white, while the score
-ring, the number inside it and the rating chip take a colour that stands off the card: apple
-green on the teal, gold on the red, and pale gold or peach on the amber and orange. Those are
-graphics and large text, where the bar is 3:1; measured on the rendered card they run from
-3.64:1 to 4.57:1, and the chip's dark ink on its filled ground reaches 11:1. The rest of the panel stays neutral: a saturated fill behind
+ring, the number inside it and the rating chip share one gradient per verdict: green on the
+teal, coral on the red, pale gold and peach on the amber and orange. The ring sits in a dark
+groove rather than a light one, which is what lets each verdict use a real tint of its own
+colour — on a bright red card a mid red measures 1.28:1 and a pale one reads as white, so
+without the groove the arc gets pushed to one extreme or the other. Those are graphics and
+large text, where the bar is 3:1; measured on the rendered card the arcs run 3.41:1 to 4.57:1
+against the card and 6:1 to 8:1 against the groove, and the chip's ink reaches 7.5:1. The rest of the panel stays neutral: a saturated fill behind
 body text would cost more in readability than it gains.
 
 **The counts are jump links.** Clicking *high*, *medium*, *low* or *passed* scrolls the report

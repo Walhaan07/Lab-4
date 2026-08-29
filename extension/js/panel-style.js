@@ -154,11 +154,12 @@ window.SSC_PANEL_CSS = `
  * striking in a mockup and is unreadable in use.
  */
 .ssc-level--safe, .ssc-level--ok {
-    --ssc-chip-ink: #1a2e05;
-    /* apple green, well clear of the teal card behind it */
-    --ssc-ring-1: #84cc16;
-    --ssc-ring-2: #a3e635;
-    --ssc-ring-3: #bef264;
+    --ssc-chip-ink: #052e16;
+    /* The green from the swatch, opened up just enough to clear the teal card:
+       #34c759 itself measures 2.41:1 against it. Slight gradient only. */
+    --ssc-ring-1: #4ade80;              /* 3.07:1 */
+    --ssc-ring-2: #5ce68f;              /* 3.36:1 */
+    --ssc-ring-3: #6ee7a0;              /* 3.47:1 */
     --ssc-grad-1: #075985;              /* white: 7.6:1 */
     --ssc-grad-2: #0e7490;              /* white: 5.4:1 */
     --ssc-grad-3: #0f766e;              /* white: 5.6:1 */
@@ -203,11 +204,11 @@ window.SSC_PANEL_CSS = `
     --ssc-pill-token: #7c2d12;
 }
 .ssc-level--danger {
-    --ssc-chip-ink: #422006;
-    /* gold on the red card: clearly separated, and still reads as alarm */
-    --ssc-ring-1: #facc15;
-    --ssc-ring-2: #fde047;
-    --ssc-ring-3: #fef08a;
+    --ssc-chip-ink: #611217;
+    /* coral: 4.4:1 against the dark groove it sits in, and still clearly red */
+    --ssc-ring-1: #fca5a5;
+    --ssc-ring-2: #fdb4b4;
+    --ssc-ring-3: #fecdd3;
     /* The brightest red that still carries white text: #ef4444 would look
        hotter but drops to 3.8:1, so the ramp tops out at a crimson-rose and
        the heat comes from the glow instead. */
@@ -591,7 +592,10 @@ window.SSC_PANEL_CSS = `
 
 .ssc-ring { position: relative; flex: 0 0 auto; width: 84px; height: 84px; }
 .ssc-ring__svg { width: 100%; height: 100%; display: block; transform: rotate(-90deg); }
-.ssc-ring__track { fill: none; stroke: rgba(255, 255, 255, .24); stroke-width: 7.5; }
+/* The track is a dark groove rather than a light one: the arc then reads
+   against it as well as against the card, which is what lets each verdict use
+   a real tint of its colour instead of being pushed to near-white. */
+.ssc-ring__track { fill: none; stroke: rgba(0, 0, 0, .3); stroke-width: 7.5; }
 
 .ssc-ring__arc {
     fill: none;
@@ -613,13 +617,25 @@ window.SSC_PANEL_CSS = `
 
 .ssc-ring__score {
     /* the number takes the ring's colour; at 23px bold it is large text, so
-       3:1 is the bar and every verdict clears it with room to spare */
+       3:1 is the bar and every stop of every verdict clears it */
     color: var(--ssc-ring-2, inherit);
     font-size: 23px;
     font-weight: 700;
     letter-spacing: -.03em;
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum" 1;
+}
+
+/* The number carries the same gradient as the arc. The flat colour above is
+   the fallback, so the digits never vanish where background-clip is missing. */
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+    .ssc-ring__score {
+        background-image: linear-gradient(135deg, var(--ssc-ring-1),
+                          var(--ssc-ring-2) 55%, var(--ssc-ring-3));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+    }
 }
 
 .ssc-ring__max {
@@ -644,7 +660,8 @@ window.SSC_PANEL_CSS = `
      * text is dark rather than white: white on apple green measures 1.5:1,
      * whereas this ink clears 10:1 on every verdict.
      */
-    background: var(--ssc-ring-2, var(--ssc-surface));
+    background: linear-gradient(135deg, var(--ssc-ring-1, var(--ssc-surface)),
+                var(--ssc-ring-2, var(--ssc-surface)) 55%, var(--ssc-ring-3, var(--ssc-surface)));
     border: 1px solid rgba(255, 255, 255, .35);
     box-shadow: 0 1px 3px rgba(0, 0, 0, .18);
     color: var(--ssc-chip-ink, var(--ssc-level-ink, var(--ssc-text-2)));
