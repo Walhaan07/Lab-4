@@ -79,7 +79,7 @@ extension/                  <-- load THIS folder as an unpacked extension
     ├── background.js       service worker: toolbar badge, per-tab results
     └── popup.js            toolbar popup logic
 
-test-pages/                 ten self-contained pages
+test-pages/                 eleven self-contained pages
 ├── safe-sample.html        clean page                  - rates A (100)
 ├── caution-sample.html     pushy shop page             - rates C (67)
 ├── risky-sample.html       mock rewards page           - rates D (52)
@@ -88,11 +88,12 @@ test-pages/                 ten self-contained pages
 ├── pharming-sample.html    router / DNS attack page    - rates F, pharming
 ├── drainer-sample.html     crypto wallet drainer       - rates F, drainer
 ├── clickfix-sample.html    fake captcha, "press Win+R" - rates F
-├── feature-check-sample.html   anti-phishing test page - blocked by reputation
-└── assistant-sample.html   scam words the visitor typed - rates A (context aware)
+├── feature-check-sample.html   anti-phishing test page - blocked, recognised dynamically
+├── assistant-sample.html   scam words the visitor typed - rates A (context aware)
+└── webapp-sample.html      an ordinary application     - rates A (precision guard)
 test/analyzer.test.js       24 unit tests over the analyser
 test/intel.test.js          20 tests over the reputation layer and the address checks
-test/page.test.js           18 tests that need a rendered page (jsdom)
+test/page.test.js           27 tests that need a rendered page (jsdom)
 tools/make-icons.js         regenerates the PNG icons (optional)
 ```
 
@@ -240,7 +241,7 @@ where the visitor writes the words (see *Context awareness*).
 |---|---|---|---|---|---|
 | 1 | `https` | Transport | URL | Connection is not encrypted | 12 |
 | 2 | `ip-host` | URL | URL | Site is addressed by a raw IP address | 12 |
-| 3 | `punycode` | URL | URL | Domain uses international characters | 6 |
+| 3 | `punycode` | URL | URL | Domain uses international characters | 3 |
 | 4 | `at-symbol` | URL | URL | Address uses the "@" trick | 10 * |
 | 5 | `shortener` | URL | URL | Destination is hidden behind a URL shortener | 6 |
 | 6 | `suspicious-tld` | URL | URL | Top level domain is frequently abused | 8 |
@@ -267,7 +268,7 @@ where the visitor writes the words (see *Context awareness*).
 | 27 | `third-party-scripts` | Content | Page | Many third party scripts | 5 |
 | 28 | `spam-phrases` | Content | Page | Classic spam wording in the text | 15 † |
 | 29 | `shouty-text` | Content | Page | Text is written in shouting style | 4 † |
-| 30 | `obfuscated-js` | Scripts | Page | Inline scripts look obfuscated | 8 |
+| 30 | `obfuscated-js` | Scripts | Page | Inline scripts are obfuscated | 8 |
 | 31 | `meta-refresh` | Content | Page | Page redirects automatically | 6 |
 | 32 | `popup-traps` | Scripts | Page | Pop-up / leave-page traps | 5 |
 | 33 | `hidden-text` | Content | Page | Invisible keyword stuffing | 6 |
@@ -287,8 +288,8 @@ where the visitor writes the words (see *Context awareness*).
 | 47 | `permission-abuse` | Scripts | Page | Page grabs browser permissions on load | 6 |
 | 48 | `ad-density` | Content | Page | Page is dominated by advertising frames | 5 |
 | 49 | `contact-info` | Content | Page | No contact information on the page | 3 |
-| 50 | `known-threat` | Reputation | URL | Address is on a known-threat list | 25 * |
-| 51 | `test-page-signature` | Reputation | Page | Page is a published security feature test | 20 * † |
+| 50 | `known-threat` | Reputation | URL | Address is on a known-threat list | 25 |
+| 51 | `test-page-signature` | Reputation | Page | Page is a published security feature test | 20 † |
 | 52 | `kit-path` | URL | URL | Path matches a known phishing-kit shape | 12 |
 | 53 | `brand-in-domain` | URL | URL | Domain borrows a well known company name | 16 * |
 | 54 | `homograph-brand` | URL | URL | Domain spells a brand in look-alike letters | 18 * |
@@ -329,8 +330,8 @@ where the visitor writes the words (see *Context awareness*).
 | 89 | `qr-payment` | Content | Page | QR code shown next to a payment request | 8 † |
 | 90 | `subscription-trap` | Content | Page | Recurring charge buried in small print | 7 † |
 | 91 | `devtools-blocking` | Scripts | Page | Page blocks inspection of itself | 9 |
-| 92 | `bot-cloaking` | Scripts | Page | Page checks whether you are a real visitor | 10 |
-| 93 | `dynamic-script-injection` | Scripts | Page | Page assembles its scripts at run time | 8 |
+| 92 | `bot-cloaking` | Scripts | Page | Page shows something different to scanners | 10 |
+| 93 | `dynamic-script-injection` | Scripts | Page | Page hides where its scripts come from | 8 |
 | 94 | `history-trap` | Scripts | Page | Page traps the back button | 7 |
 | 95 | `data-uri-navigation` | Content | Page | Page links to inline documents or script | 10 |
 
@@ -338,26 +339,39 @@ where the visitor writes the words (see *Context awareness*).
 
 Some pages cannot be judged by how they are built. The industry anti-phishing feature test page
 is the clearest case: valid HTML, a reputable domain, a plain explanation of what it is for, and
-every structural test passes it — the earlier version of this extension rated it **93, A**.
-That is not a scoring mistake, it is a category mistake. A product recognises that page because
-it knows the address, and the page itself says so when it loads: *"If you can read this page,
-your anti-phishing feature is not enabled."*
+every structural test passes it — the first version of this extension rated it **93, A**. That is
+not a scoring mistake, it is a category mistake. A product recognises that page because it knows
+what it is, and the page itself says so when it loads: *"If you can read this page, your
+anti-phishing feature is not enabled."*
 
-`threat-intel.js` holds what is known rather than what is visible:
+**No host is named anywhere in the feed.** Listing amtso.org would only ever have recognised the
+test pages that existed the day it was written, and would have said nothing about the next
+vendor's. Two host-agnostic mechanisms are used instead:
 
-| Kind of knowledge | Examples |
+1. **The address describes the test.** `check-desktop-phishing-page`, `feature-settings-check`,
+   `its-a-trap`, `eicar`, `malware-test` — these are descriptions, and they work on whatever
+   domain they turn up on. They come in two strengths, because `check-desktop-phishing-page` can
+   only be one thing while `/blog/phishing-test-page-explained` is probably an article.
+2. **The page says so itself.** Three families of wording are scored: what the page claims to be
+   ("test page", "feature settings check"), which protection it is testing ("anti-phishing",
+   "safe browsing"), and — the giveaway — that you were not supposed to get this far ("if you
+   can read this", "is not enabled", "did not block"). That third family is what separates a page
+   that **is** a test from a page **about** one, because an article's readers are not people
+   whose protection just failed.
+
+Neither alone is treated as proof unless it is unambiguous:
+
+| Evidence | Result |
 |---|---|
-| Published feature test pages | the AMTSO checks (phishing, malware, PUA, cloud lookup, drive-by), Google Safe Browsing's test page, Mozilla's `its-a-trap`, WICAR, EICAR |
-| Phishing kit fingerprints | Telegram bot and Discord webhook collectors, `mailto:` form actions, anonymous form relays, kit path shapes such as `/wp-content/uploads/.../login/verify` |
-| Hosting classes | free sub-domain platforms, dynamic DNS providers |
-| Brand ownership | the domains each brand really runs, so `outlook.live.com` and `s3.amazonaws.com` are not read as impersonation |
-| Local block list | addresses an administrator or the user adds themselves |
+| Page says you should not be reading it | **Blocked** on any host, in any wording |
+| Address unambiguously names a test **and** the page agrees | **Blocked** |
+| Address unambiguously names a test, page not read (address-only scan) | **Blocked** |
+| Address could belong to an article, nothing in the page confirms it | reported, ~8 points, **not** blocked |
 
-Recognition is not a score. When the reputation layer matches, the report opens with a red block
-naming the threat, the toolbar badge changes from a grade to **!**, and the score is held at or
-below 10.
-
-Adding your own addresses, from the browser console on any page:
+The rest of the feed is about kits rather than sites: exfiltration endpoints (Telegram bots,
+Discord webhooks, `mailto:` form actions), kit path shapes, throwaway hosting classes, and which
+domains each brand really runs — so `outlook.live.com` and `s3.amazonaws.com` are not read as
+impersonation. Plus a local block list an administrator or the user fills themselves:
 
 ```js
 chrome.storage.local.set({blockList: [
@@ -369,7 +383,9 @@ chrome.storage.local.set({blockList: [
 ]});
 ```
 
-The list is read once per page load, so reload the tab to apply it.
+The list is read once per page load, so reload the tab to apply it. When anything here matches,
+the report opens with a red block naming the threat and the toolbar badge changes from a grade
+to **!**.
 
 ### Context awareness — who wrote the words on the page
 
@@ -410,6 +426,40 @@ password box on a free sub-domain wearing a bank's logo is a phishing kit.
 A finding may only answer for one group of a pattern, so a single look-alike domain cannot
 satisfy two conditions at once and invent a pattern out of one fact.
 
+### Precision — what a finding has to prove
+
+Version 2 rated google.com, an assistant and essentially every modern application **F**. The
+cause was the same each time, and it is worth writing down because it is the standard way a
+scanner like this goes wrong:
+
+> A test asked whether two tokens appeared **anywhere** in the page's scripts. In a bundled
+> application, every token appears somewhere: a key listener here, a `fetch` there, a base64
+> decode in a helper, `createElement('script')` in the chunk loader. The answer was always yes.
+
+Every behavioural test now asks whether the things appear **together**, inside one window of
+code, and whether there is anything for them to act on:
+
+| Test | Version 2 asked | Now asks |
+|---|---|---|
+| `keystroke-capture` | is there a key listener, and a `fetch`, and a `.value`? | on a page with a password or card field: does a key handler send what was typed, in the same breath, to **another** site? |
+| `history-trap` | is there a `pushState` and a `popstate`? | does a `popstate` handler send you **forward** again, or does a loop flood the history? |
+| `dynamic-script-injection` | is there a `createElement('script')` and a decode? | is a script's **address** built from encoded text, in the same window? |
+| `obfuscated-js` | are `atob` and `fromCharCode` present? | is something decoded and then **executed**, or is there a long encoded block next to a decoder? |
+| `bot-cloaking` | is `navigator.webdriver` mentioned? | does that check decide **what the page shows**? |
+| `devtools-blocking` | are two devtools-ish tokens present? | are the right-click menu **and** the devtools keys both blocked? |
+| `install-prompt` | does the page link to a `.pkg`, `.apk`, `.deb`? | is the installer from **somewhere other than** this site? |
+
+Three more went the same way for the same reason. `credential-exfil`, `wallet-drainer` and
+`router-attack` used to read the page's raw markup, which meant an article explaining an attack —
+code samples and all — read as the attack itself. They now read only executable script, form
+targets and where the page actually points. `seed-phrase-harvest` used to fire on any page
+mentioning a recovery phrase, which is every exchange's own security warning; it now needs a
+field that collects one, and stands down entirely when the page is telling you never to share it.
+
+Two structural changes support all of that: `<script type="application/json">` and other data
+blocks are no longer read as code, and a page's visible text no longer includes the source of its
+scripts.
+
 ### How the score is calculated
 
 ```
@@ -432,7 +482,7 @@ Four ideas make the number meaningful:
    score.
 3. **Some findings cap the score.** A known address, a domain one character from `paypal.com`,
    a page asking for a wallet's recovery phrase: averaging those against ninety passing tests
-   would hide them, so 25 of the tests hold the score down regardless of what else passed.
+   would hide them, so 23 of the tests hold the score down regardless of what else passed.
 4. **A reputation hit is not a matter of degree.** It is a name already known, and the report
    says so instead of quoting a number.
 
@@ -451,12 +501,16 @@ Four ideas make the number meaningful:
 | Address | Score | Why |
 |---|---|---|
 | `https://www.bbc.co.uk/news` | 100 A | nothing to report |
+| any modern web application (`test-pages/webapp-sample.html`) | 100 A | routing, telemetry, lazy chunks and minified helpers are not evidence |
 | `https://chatgpt.com/c/…` (asking about scams) | 100 A | the scam words are the visitor's, not the site's |
+| an exchange page warning you never to share your seed phrase | 100 A | warning against a thing is not asking for it |
+| an article explaining how drainers work, with code samples | 100 A | prose about code is not code |
 | `https://accounts.google.com/signin` | 100 A | a brand's own sign-in page is not "credential keywords" |
 | `https://outlook.live.com/mail/0/` | 100 A | Microsoft really does run `live.com` |
 | `https://münchen.de/` | 91 A | a genuine international domain is not punished |
 | `https://bit.ly/3xYzAb` | 83 B | a shortener hides the destination |
-| `https://www.amtso.org/check-desktop-phishing-page/` | **6 F, blocked** | published anti-phishing feature test page |
+| `https://www.amtso.org/check-desktop-phishing-page/` | **6 F, blocked** | the address names a feature check and the page agrees |
+| `https://blog.example.com/phishing-test-page-explained` | 77 B | the address could belong to an article, and the page reads like one |
 | `https://paypal-billing-support.com/signin` | 20 F | the brand is inside the registrable domain |
 | `https://files.example.com/invoice.pdf.exe` | 30 F | a `.pdf` that is really an `.exe` |
 | `https://paypa1.com/login` | 30 F | one character away from paypal.com |
@@ -483,6 +537,7 @@ Four ideas make the number meaningful:
    | `clickfix-sample.html` | 8 **F** | a fake captcha talking you into running a command |
    | `feature-check-sample.html` | **blocked** | recognised as a security feature test page by its wording alone |
    | `assistant-sample.html` | 95 **A** | a transcript full of scam words that the *visitor* asked about |
+   | `webapp-sample.html` | 100 **A** | an ordinary application — the shape that version 2 rated F |
 3. Open `https://www.amtso.org/check-desktop-phishing-page/` to see the reputation layer on the
    live page this release was built for: the badge shows **!**, and the report opens with
    *Known phishing page*.
@@ -498,7 +553,7 @@ Requires Node.js 18+; the extension itself needs nothing installed.
 
 ```bash
 npm install       # optional: installs jsdom, which enables the page tests
-npm test          # 62 tests
+npm test          # 71 tests
 ```
 
 - `analyzer.test.js` — rating bands, individual detectors, score caps, the punycode decoder,
@@ -508,19 +563,24 @@ npm test          # 62 tests
   the manifest really loads the two engine files in the order they depend on.
 - `page.test.js` — needs a rendered page, so it uses **jsdom**. If jsdom is not installed the
   file skips instead of failing. It covers the context-awareness cases (assistant, unlisted chat
-  app, search results), the credential kit, pharming, drainer and ClickFix pages, the false
-  positives that matter (an ad-heavy shop, a genuine bank sign-in page), and that a hostile page
-  cannot make the scan hang.
+  app, search results), the credential kit, pharming, drainer and ClickFix pages, and — in a
+  block of its own — precision: an ordinary application, a card formatter that is not a
+  keylogger, a router that is not a back-button trap, minified code that is not packed, an
+  exchange warning that is not a request, an article that is not the attack it describes, and an
+  ad-heavy newspaper that is not a scam. Each of those has its opposite number asserted in the
+  same test, so precision cannot be bought by simply detecting less.
 
 ## 7. Limitations
 
 The scanner runs **entirely in the browser**. Nothing is uploaded and no address is ever sent
 anywhere, which is a deliberate privacy choice and also the limit of what it can know:
 
-- **The bundled feed is only as fresh as the release.** There is no live lookup against Google
-  Safe Browsing, PhishTank or any other service, so a phishing site registered this morning is
-  judged by its shape alone. That is what the 95 heuristics and the seven patterns are for, and
-  it is why the local block list exists.
+- **There is no live lookup.** Nothing is checked against Google Safe Browsing, PhishTank or any
+  other service, so a phishing site registered this morning is judged by its shape alone. That is
+  what the 95 heuristics and the seven patterns are for, and it is why the local block list
+  exists. The reputation layer recognises *kinds* of page rather than a list of sites, which is
+  what lets it keep working as those sites change — but it cannot know that a particular domain
+  went bad yesterday.
 - **Heuristics produce false positives and false negatives.** A great deal of care has gone into
   the first kind — scam vocabulary is separated from ordinary marketing copy, nuisance findings
   share a capped budget, a brand's own domains are known, and pages whose words belong to their

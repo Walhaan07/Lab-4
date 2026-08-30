@@ -666,7 +666,22 @@
         var body = doc && doc.body;
         if (!body) { return ''; }
         try {
-            return (body.innerText || body.textContent || '').slice(0, 200000);
+            if (typeof body.innerText === 'string' && body.innerText.length) {
+                return body.innerText.slice(0, 200000);
+            }
+            /* innerText needs a laid-out page. Without one - a detached
+               document, a test harness - textContent is all there is, and it
+               includes the source of every script on the page. Reading code as
+               if it were prose is how a scanner ends up quoting a variable
+               name back at somebody, so those elements are taken out. */
+            var text = body.textContent || '';
+            Array.prototype.forEach.call(doc.querySelectorAll('script, style, noscript, template'), function (node) {
+                var chunk = node.textContent;
+                if (chunk && chunk.length > 2 && text.length < 400000) {
+                    text = text.split(chunk).join(' ');
+                }
+            });
+            return text.slice(0, 200000);
         } catch (e) {
             return '';
         }
@@ -698,12 +713,22 @@
 
     /* --------------------------------------------------- helpers added in v2.0 */
 
-    /** Source of every inline <script> on the page, capped for speed. */
+    /** True for a <script> the browser will execute (not JSON, not a template). */
+    function isExecutable(tag) {
+        var type = (tag.getAttribute('type') || '').toLowerCase().trim();
+        return type === '' || /javascript|ecmascript|^module$/.test(type);
+    }
+
+    /** Source of every inline <script> the browser runs, capped for speed. */
     function inlineScriptSource(doc) {
         var code = '';
         try {
             var tags = doc.querySelectorAll('script:not([src])');
             for (var i = 0; i < tags.length && code.length < 200000; i++) {
+                /* Applications embed their state as <script type="application/json">
+                   and their markup as <script type="text/template">. Reading
+                   those as code means searching a data file for a keylogger. */
+                if (!isExecutable(tags[i])) { continue; }
                 code += (tags[i].textContent || '') + '\n';
             }
             // Inline handlers hide the same behaviour in an attribute.
@@ -796,6 +821,36 @@
             });
         } catch (e) { /* ignore */ }
         return out;
+    }
+
+    /**
+     * Do two things happen in the same piece of code?
+     *
+     * A bundled application contains almost every token a scanner might look
+     * for, somewhere in its hundreds of kilobytes: a key listener here, a
+     * fetch there, a base64 decode in a helper. Asking whether both appear is
+     * therefore no question at all - the answer is yes for every modern site.
+     * Asking whether they appear *together*, inside one window of code, is the
+     * question that was meant.
+     *
+     * @param {string} code      the source to search
+     * @param {RegExp} anchor    global regex for the first thing
+     * @param {RegExp} follower  what must appear near it
+     * @param {number} span      how far either side counts as "near"
+     * @returns {null|{evidence: string, window: string}}
+     */
+    function nearby(code, anchor, follower, span) {
+        var match;
+        var scanned = 0;
+        anchor.lastIndex = 0;
+        while (scanned < 80 && (match = anchor.exec(code)) !== null) {
+            scanned++;
+            var from = Math.max(0, match.index - span);
+            var window = code.slice(from, match.index + match[0].length + span);
+            if (follower.test(window)) { return {evidence: match[0], window: window}; }
+            if (match.index === anchor.lastIndex) { anchor.lastIndex++; }
+        }
+        return null;
     }
 
     /* Four tests want the same list, and walking a large page four times is
@@ -1461,8 +1516,10 @@
                     var invisible = (st && (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) === 0));
                     if (invisible || r.width <= 2 || r.height <= 2) { hidden++; }
                 });
-                return hidden
-                    ? hidden + ' hidden frame(s) are loaded in the background (clickjacking / tracking pattern).'
+                /* A single invisible frame is an analytics ping on half the
+                   sites on the internet. Several is a different habit. */
+                return hidden >= 3
+                    ? hidden + ' hidden frames are loaded in the background (clickjacking / tracking pattern).'
                     : null;
             }
         },
@@ -1553,25 +1610,41 @@
         },
         {
             id: 'obfuscated-js',
-            about: 'The page\'s own scripts are written to be unreadable, for instance assembling ' +
-                   'code from character codes as it runs. Ordinary sites have no reason to hide ' +
-                   'what their code does; hiding it is how malicious code gets past scanners and ' +
-                   'past anyone who looks.',
-            title: 'Inline scripts are not obfuscated',
-            failTitle: 'Inline scripts look obfuscated',
+            about: 'Code on the page is written to be unreadable: a block of encoded text that is ' +
+                   'decoded and then run. Ordinary code has no reason to hide from the person ' +
+                   'whose browser is about to execute it, and the point of hiding it is that ' +
+                   'neither you nor a scanner can see what it does until it has already run.',
+            title: 'No obfuscated / packed scripts',
+            failTitle: 'Inline scripts are obfuscated',
             category: 'Scripts',
             needsDom: true,
             weight: 8,
             run: function (c) {
-                var code = '';
-                Array.prototype.forEach.call(c.doc.querySelectorAll('script:not([src])'), function (s) {
-                    code += s.textContent + '\n';
-                });
-                code = code.slice(0, 120000);
-                var hits = countOccurrences(code, OBFUSCATION_TOKENS);
-                return hits.length >= 2
-                    ? 'Inline scripts use ' + hits.slice(0, 4).join(', ') + ' which are typical of obfuscated code.'
-                    : null;
+                /* Every minified bundle contains atob, fromCharCode and \u00
+                   escapes somewhere. What separates packing from minifying is
+                   a payload: something encoded, decoded, and then executed -
+                   with the three close enough together to be one act. */
+                var code = c.inline;
+
+                var executed = nearby(code,
+                    /(atob|unescape|fromCharCode|decodeURIComponent)\s*\(/g,
+                    /(eval\s*\(|new\s+Function\s*\(|document\.write\s*\(|\.innerHTML\s*=|setTimeout\s*\(\s*[a-z_$]+\s*\))/,
+                    250);
+                if (executed) {
+                    return 'Encoded text is decoded and then executed (' + executed.evidence +
+                           ' next to an eval / Function / write), which is how packed code is delivered.';
+                }
+
+                var packed = nearby(code, /['"][A-Za-z0-9+/]{160,}={0,2}['"]/g,
+                    /(atob|unescape|fromCharCode|decodeURIComponent)\s*\(/, 200);
+                if (packed) {
+                    return 'A long encoded block sits next to a decoder, so what finally runs is not what the page shows.';
+                }
+
+                if (/(?:\\x[0-9a-f]{2}){40,}|(?:\\u[0-9a-f]{4}){40,}/i.test(code)) {
+                    return 'A long run of escaped characters hides a string from anything reading the page source.';
+                }
+                return null;
             }
         },
         {
@@ -2047,18 +2120,39 @@
                    'dangerous or that exist purely to be blocked, such as the published tests a ' +
                    'security product is measured against. No amount of reading the markup can ' +
                    'reveal that, which is why the list is consulted first.',
-            cap: 6,
             title: 'Address is not on a known-threat list',
             failTitle: 'Address is on a known-threat list',
             category: 'Reputation',
             weight: 25,
             run: function (c) {
                 if (!c.intel) { return null; }
-                return {
-                    detail: c.intel.label + '. ' + c.intel.detail + ' (source: ' + c.intel.source + ')',
-                    points: 25,
-                    cap: 6
-                };
+
+                // The local block list is a decision somebody already made.
+                if (c.intel.severity === 'block') {
+                    return {detail: c.intel.label + '. ' + c.intel.detail +
+                            ' (source: ' + c.intel.source + ')', points: 25, cap: 6};
+                }
+
+                /* Otherwise the address only describes a test page. The page
+                   itself is the evidence: if it explains that you should not
+                   have got this far, that settles it. */
+                var strong = c.intel.strength === 'strong';
+                if (c.signature) {
+                    return {detail: c.intel.label + ', and the page agrees: ' +
+                            c.signature.label.toLowerCase() + '. ' + c.intel.detail,
+                            points: 25, cap: strong || c.signature.severity === 'block' ? 6 : 25};
+                }
+                if (!c.doc) {
+                    return {detail: c.intel.label + '. ' + c.intel.detail +
+                            ' The page content was not read on this scan.',
+                            points: strong ? 20 : 8, cap: strong ? 10 : undefined};
+                }
+                /* The address says test page, the content does not agree - an
+                   article about such pages reads exactly like this. Worth
+                   saying, not worth blocking. */
+                return {detail: c.intel.label + ', but nothing in the page confirms it. ' +
+                        'It may simply be writing about test pages.',
+                        points: strong ? 12 : 8};
             }
         },
         {
@@ -2068,20 +2162,21 @@
                    'tests. Those pages are written to be reached only when protection is off, so ' +
                    'seeing the text at all is the finding. It catches the copies and translations ' +
                    'that the address list has never seen.',
-            cap: 10,
             title: 'Page is not a security feature test',
             failTitle: 'Page is a published security feature test',
             category: 'Reputation',
             needsDom: true,
             weight: 20,
             run: function (c) {
-                var signature = INTEL.matchPageSignature(c.text + ' ' + (c.doc.title || ''));
-                if (!signature) { return null; }
+                if (!c.signature) { return null; }
+                var certain = c.signature.severity === 'block';
                 return {
-                    detail: signature.label + ': the page says "' + short(signature.phrase, 60) +
-                            '". A filter that was working would have stopped you before this loaded.',
-                    points: 20,
-                    cap: 10
+                    detail: c.signature.label + ' - it says "' + short(c.signature.phrase, 60) +
+                            '" (' + c.signature.families.join(' + ') + ' wording).' +
+                            (certain ? ' A filter that was working would have stopped you before this loaded.'
+                                     : ' On its own that is a resemblance, not proof.'),
+                    points: certain ? 20 : 10,
+                    cap: certain ? 10 : undefined
                 };
             }
         },
@@ -2300,11 +2395,17 @@
             needsDom: true,
             weight: 14,
             run: function (c) {
-                var haystack = (c.html + ' ' + c.inline).toLowerCase();
+                if (isPrivateHost(c.host)) { return null; }     // you are on the router's own page
+
+                /* Where the page points, plus the code it runs - not its
+                   prose. An article about router security names the same
+                   addresses without ever sending anything to them. */
+                var haystack = c.inline.toLowerCase();
+                pageRefs(c).forEach(function (url) { haystack += '\n' + url.href.toLowerCase(); });
+
                 var gateways = GATEWAY_IPS.filter(function (ip) { return haystack.indexOf(ip) !== -1; });
                 var paths = ROUTER_PATHS.filter(function (path) { return haystack.indexOf(path) !== -1; });
                 if (!gateways.length && !paths.length) { return null; }
-                if (isPrivateHost(c.host)) { return null; }     // you are on the router's own page
                 var evidence = gateways.concat(paths).slice(0, 3).join(', ');
                 return {
                     detail: 'The page references router administration addresses (' + evidence +
@@ -2327,9 +2428,18 @@
             weight: 12,
             run: function (c) {
                 var hits = countOccurrences(c.text.toLowerCase(), DNS_CHANGE_PHRASES);
-                return hits.length
-                    ? 'The page instructs you to change network settings: "' + hits.slice(0, 2).join('", "') + '".'
-                    : null;
+                if (!hits.length) { return null; }
+
+                /* Guides and articles explain how to change a DNS server too.
+                   What marks out the attack is that the page also reaches
+                   towards the box it wants changed. */
+                var reaches = pageRefs(c).some(function (url) {
+                    return isPrivateHost(url.hostname) ||
+                           ROUTER_PATHS.some(function (path) { return url.pathname.toLowerCase().indexOf(path) !== -1; });
+                });
+                if (!reaches) { return null; }
+                return 'The page instructs you to change network settings ("' + hits.slice(0, 2).join('", "') +
+                       '") and points at the router itself.';
             }
         },
         {
@@ -2436,7 +2546,19 @@
             needsDom: true,
             weight: 20,
             run: function (c) {
-                var found = INTEL.exfilEndpoints(c.inline + '\n' + c.html.slice(0, 120000));
+                /* Only what the page would actually run or submit to: an
+                   article quoting a kit's collector in a code sample is
+                   describing the trick, not performing it. */
+                var targets = c.inline;
+                /* Only a form's own action counts as "this is where your
+                   typing goes". A mailto: link in a footer is a contact
+                   address, which is the opposite of a collector. */
+                Array.prototype.forEach.call(c.doc.querySelectorAll('form[action]'), function (form) {
+                    targets += '\naction="' + form.getAttribute('action') + '"';
+                });
+                pageRefs(c).slice(0, 200).forEach(function (url) { targets += '\n' + url.href; });
+
+                var found = INTEL.exfilEndpoints(targets);
                 if (!found.length) { return null; }
                 var high = found.some(function (item) { return item.severity === 'high'; });
                 return {
@@ -2505,16 +2627,32 @@
             needsDom: true,
             weight: 22,
             run: function (c) {
-                var hits = countOccurrences(c.text.toLowerCase(), SEED_PHRASE_WORDS);
+                var text = c.text.toLowerCase();
+                var hits = countOccurrences(text, SEED_PHRASE_WORDS);
                 var fields = fieldsMatching(c.doc, ['seed', 'mnemonic', 'passphrase', 'privatekey', 'private_key', 'recovery']);
                 if (!hits.length && !fields.length) { return null; }
-                if (hits.length && !fields.length && !c.doc.querySelector('form, textarea, input')) {
-                    return null;                      // an article explaining the scam, not running one
+
+                /* Every honest wallet and exchange writes about recovery
+                   phrases - to tell you never to share one. Warning against
+                   the thing is the opposite of asking for it. */
+                var warns = /(never (ask|share|enter|give|request|type)|do not share|don't share|will never ask|nobody from|no one will ever)/.test(text);
+
+                // A field that collects it is the finding; wording is not.
+                if (fields.length) {
+                    return {
+                        detail: 'A field on this page collects your ' + fields[0] +
+                                '. Whoever receives it owns the wallet outright.',
+                        points: 22,
+                        cap: 5
+                    };
                 }
+                if (warns) { return null; }
+                var box = c.doc.querySelector('textarea, input[type="text"]:not([type="search"])');
+                if (!box) { return null; }         // writing about it, not running it
                 return {
-                    detail: 'The page asks for "' + (hits[0] || fields[0]) + '". Whoever receives it owns the wallet outright.',
-                    points: 22,
-                    cap: 5
+                    detail: 'The page raises "' + hits[0] + '" next to a box to type it into. ' +
+                            'No wallet, exchange or support desk ever needs it.',
+                    points: 14
                 };
             }
         },
@@ -2531,7 +2669,8 @@
             needsDom: true,
             weight: 18,
             run: function (c) {
-                var code = (c.inline + ' ' + c.html.slice(0, 120000)).toLowerCase();
+                // Executable code only: a tutorial's code sample is not a call.
+                var code = c.inline.toLowerCase();
                 var hits = countOccurrences(code, DRAINER_METHODS);
                 var connects = hits.indexOf('eth_requestaccounts') !== -1 || hits.indexOf('walletconnect') !== -1;
                 var signs = hits.some(function (method) {
@@ -2610,23 +2749,47 @@
         },
         {
             id: 'keystroke-capture',
-            about: 'The scripts watch individual keystrokes and send them onward. A form that ' +
-                   'submits normally has no reason to read the keys one at a time, and a page that ' +
-                   'does can collect what you typed even if you think better of it and never press ' +
-                   'the button.',
+            about: 'The scripts watch individual keystrokes on a page that asks for a password or ' +
+                   'card details, and send what they see onward. A form that submits normally has ' +
+                   'no reason to read the keys one at a time, and a page that does can collect what ' +
+                   'you typed even if you think better of it and never press the button.',
             title: 'No keystroke logging in the page scripts',
             failTitle: 'Page scripts record what you type',
             category: 'Scripts',
             needsDom: true,
             weight: 12,
             run: function (c) {
+                /* Every editor, search box and keyboard shortcut on the web
+                   listens to keys and talks to a server. What makes a
+                   keylogger is that there is something worth logging. */
+                var sensitive = c.hasPassword ||
+                    fieldsMatching(c.doc, ['card', 'cvv', 'cvc', 'otp', 'ssn', 'iban', 'pin', 'passcode']).length > 0;
+                if (!sensitive) { return null; }
+
                 var code = c.inline.toLowerCase();
-                var listens = /addeventlistener\s*\(\s*['"](keydown|keypress|keyup|input)['"]/.test(code) ||
-                              /onkeypress\s*=|onkeydown\s*=/.test(code);
-                var sends = /(fetch\s*\(|xmlhttprequest|navigator\.sendbeacon|new image\(\)\.src|websocket\s*\()/.test(code);
-                var reads = /\.value|password|input\.value/.test(code);
-                if (!(listens && sends && reads)) { return null; }
-                return 'Inline scripts listen to every keystroke and send data onward before the form is submitted.';
+                var hit = nearby(code,
+                    /addeventlistener\s*\(\s*['"](keydown|keypress|keyup)['"]|onkey(down|press|up)\s*=/g,
+                    /(fetch\s*\(|xmlhttprequest|sendbeacon|new image|websocket\s*\()/,
+                    250);
+                // ... and what is sent has to be what was typed.
+                if (!hit || !/\.value|password|\btarget\.value|e\.key/.test(hit.window)) { return null; }
+
+                /* A checkout formatting a card number and checking it with its
+                   own server does all of this. The difference is where it
+                   goes: a collector is somewhere else. */
+                var elsewhere = null;
+                var absolute = hit.window.match(/https?:\/\/([a-z0-9.-]+)/g) || [];
+                absolute.forEach(function (found) {
+                    var target = resolveUrl(found, c.href);
+                    if (!elsewhere && target && target.hostname && !sameSite(target.hostname, c.host)) {
+                        elsewhere = target.hostname;
+                    }
+                });
+                if (!elsewhere && !INTEL.exfilEndpoints(hit.window).length) { return null; }
+
+                return 'On a page asking for credentials, inline scripts read each keystroke and send it ' +
+                       'straight to ' + (elsewhere || 'an anonymous collector') +
+                       ', before the form is ever submitted.';
             }
         },
         {
@@ -2866,16 +3029,26 @@
             needsDom: true,
             weight: 10,
             run: function (c) {
+                /* A company offering its own application is not a finding -
+                   that is how software has always been distributed. What
+                   matters is a page pushing somebody else's installer, or one
+                   parked on hosting anybody can claim. */
                 var found = null;
                 pageRefs(c).forEach(function (url) {
                     if (found) { return; }
                     var path = url.pathname.toLowerCase();
+                    var elsewhere = !sameSite(url.hostname, c.host);
+                    var throwaway = INTEL.freeHost(url.hostname) || INTEL.dynamicDns(url.hostname) ||
+                                    isIpHost(url.hostname);
+                    if (!elsewhere && !throwaway) { return; }
                     INSTALL_EXT.forEach(function (ext) {
-                        if (!found && path.slice(-ext.length) === ext) { found = ext + ' from ' + url.host; }
+                        if (!found && path.slice(-ext.length) === ext) {
+                            found = ext + ' from ' + url.host;
+                        }
                     });
                 });
                 return found
-                    ? 'The page offers an install package (' + found + ') outside any app store.'
+                    ? 'The page offers an install package (' + found + ') from somewhere other than the site you are on.'
                     : null;
             }
         },
@@ -3015,8 +3188,8 @@
         /* ------------------------------- evasion and anti-analysis (83 - 88) */
         {
             id: 'devtools-blocking',
-            about: 'The page tries to stop you looking at how it is built - the right-click menu, ' +
-                   'the view-source shortcut, the developer tools. An ordinary site has nothing to ' +
+            about: 'The page tries to stop you looking at how it is built - the right-click menu ' +
+                   'and the developer tools shortcuts together. An ordinary site has nothing to ' +
                    'protect there, since everything it sent you is already on your computer; a ' +
                    'copied sign-in page has the original\'s markup to hide.',
             title: 'Does not block inspection of the page',
@@ -3025,60 +3198,76 @@
             needsDom: true,
             weight: 9,
             run: function (c) {
-                var code = c.inline.toLowerCase().replace(/\s+/g, '');
-                var hits = DEVTOOLS_TOKENS.filter(function (token) {
-                    return code.indexOf(token.replace(/\s+/g, '')) !== -1;
-                });
-                var blocks = /preventdefault/.test(code) || /returnfalse/.test(code);
-                if (hits.length < 2 || !blocks) { return null; }
-                return 'The page suppresses right-click, view-source or developer tools (' + hits.slice(0, 3).join(', ') + ').';
+                var code = c.inline.toLowerCase();
+
+                /* A custom right-click menu is normal in any editor, so that
+                   alone proves nothing. Blocking the developer-tools keys as
+                   well is what says the page does not want to be read. */
+                var menu = nearby(code, /(contextmenu)/g, /(preventdefault|return\s*false)/, 200);
+                var keys = nearby(code, /(keycode\s*[=><]{1,3}\s*(123|85|73|74)|['"]f12['"]|key\s*===?\s*['"]f12['"])/g,
+                    /(preventdefault|return\s*false)/, 200);
+                var antiDebug = /debugger;?\s*\}?\s*\)?\s*,?\s*(setinterval|settimeout)|setinterval\s*\(\s*function\s*\(\s*\)\s*\{\s*debugger/.test(code);
+
+                if (!(menu && keys) && !antiDebug) { return null; }
+                return antiDebug && !(menu && keys)
+                    ? 'The page runs a debugger statement on a timer, which freezes the developer tools if they are opened.'
+                    : 'The page blocks both the right-click menu and the developer-tools shortcuts.';
             }
         },
         {
             id: 'bot-cloaking',
-            about: 'The scripts check whether the visitor is a person or an automated scanner and ' +
-                   'can serve different content to each. Showing something harmless to whoever ' +
-                   'checks the page, and the real thing to everybody else, is how a campaign stays ' +
-                   'off the block lists for as long as possible.',
+            about: 'The scripts work out whether the visitor is a person or an automated scanner, ' +
+                   'and change the page accordingly. Showing something harmless to whoever checks ' +
+                   'the page and the real thing to everybody else is how a campaign stays off the ' +
+                   'block lists for as long as possible.',
             title: 'No visitor cloaking in the page scripts',
-            failTitle: 'Page checks whether you are a real visitor',
+            failTitle: 'Page shows something different to scanners',
             category: 'Scripts',
             needsDom: true,
             weight: 10,
             run: function (c) {
-                var code = c.inline.toLowerCase();
-                var hits = countOccurrences(code, CLOAKING_TOKENS);
-                if (!hits.length) { return null; }
-                var branches = /if\s*\(|\?\s*.+:/.test(code) && /(location\.(replace|href)|innerhtml|document\.write)/.test(code);
-                if (!branches) { return null; }
-                return 'The page inspects the visitor (' + hits.slice(0, 2).join(', ') +
-                       ') and changes what it shows accordingly.';
+                /* Analytics and bot filtering read navigator.webdriver on
+                   perfectly ordinary sites. Cloaking is that check deciding
+                   what the page shows, so the two have to be together. */
+                var hit = nearby(c.inline.toLowerCase(),
+                    /(navigator\.webdriver|headlesschrome|phantomjs|googlebot|bingbot|\/bot\|crawl)/g,
+                    /(location\.(replace|href|assign)\s*=?|innerhtml\s*=|document\.write\s*\(|\.style\.display)/,
+                    300);
+                if (!hit) { return null; }
+                return 'The page checks whether it is being visited by a person and changes what it ' +
+                       'shows based on the answer (' + hit.evidence + ').';
             }
         },
         {
             id: 'dynamic-script-injection',
-            about: 'Code is being assembled at run time and added to the page, often from text ' +
-                   'that was encoded to be unreadable in the source. Whatever finally runs is ' +
-                   'decided after the page has loaded, so nothing you or a scanner reads in the ' +
-                   'markup describes what the page actually does.',
-            title: 'No scripts assembled at run time',
-            failTitle: 'Page assembles its scripts at run time',
+            about: 'A script element is built while the page runs, and the address it loads from is ' +
+                   'assembled out of encoded text rather than written down. Lazy loading is ' +
+                   'ordinary; hiding which server the code comes from is not, and it means nothing ' +
+                   'in the page source describes what the page will actually do.',
+            title: 'No scripts assembled from hidden addresses',
+            failTitle: 'Page hides where its scripts come from',
             category: 'Scripts',
             needsDom: true,
             weight: 8,
             run: function (c) {
-                var code = c.inline.toLowerCase().replace(/\s+/g, '');
-                var creates = /createelement\(['"]script['"]\)/.test(code) || /insertadjacenthtml\(/.test(code);
-                var hidden = /atob\(|fromcharcode|unescape\(|\\x6|decodeuricomponent\(/.test(code);
-                if (!creates || !hidden) { return null; }
-                return 'A script element is built at run time from encoded text, so its real source is not in the page.';
+                /* Every application lazy-loads chunks with createElement, and
+                   every application decodes something somewhere. The finding
+                   is the two in one place: a script whose source address is
+                   built from encoded text. */
+                var hit = nearby(c.inline,
+                    /createElement\s*\(\s*['"]script['"]\s*\)/gi,
+                    /(atob\s*\(|fromCharCode|unescape\s*\(|\\x6[0-9a-f])/,
+                    300);
+                if (!hit || !/\.src\s*=/.test(hit.window)) { return null; }
+                return 'A script element is created and its address is built from encoded text, ' +
+                       'so the server it loads from does not appear in the page source.';
             }
         },
         {
             id: 'history-trap',
-            about: 'The page fills the browser history with copies of itself so that pressing back ' +
-                   'never gets you anywhere. Holding a visitor on the page is the point: the ' +
-                   'longer the fake warning or the countdown stays in front of somebody, the more ' +
+            about: 'Pressing back is being undone: the page puts itself straight back into the ' +
+                   'history, so the button never gets you anywhere. Holding a visitor is the point - ' +
+                   'the longer a fake warning or a countdown stays in front of somebody, the more ' +
                    'likely they are to do what it asks.',
             title: 'Back button works normally',
             failTitle: 'Page traps the back button',
@@ -3086,11 +3275,28 @@
             needsDom: true,
             weight: 7,
             run: function (c) {
-                var code = c.inline.toLowerCase().replace(/\s+/g, '');
-                var pushes = (code.match(/history\.(pushstate|replacestate)/g) || []).length;
-                var loops = /setinterval|for\(|while\(|popstate/.test(code);
-                if (pushes < 1 || !loops) { return null; }
-                return 'The page rewrites the browser history repeatedly, which stops the back button leaving.';
+                var code = c.inline.toLowerCase();
+
+                /* Every single-page application calls pushState and listens
+                   for popstate - that is routing, not a trap. The trap is a
+                   popstate handler that pushes you forward again. */
+                /* Not "pushState near popstate" - that is exactly how a
+                   router is written. Sending the visitor forward again is
+                   something only a trap does. */
+                var undo = nearby(code, /(onpopstate\s*=|['"]popstate['"])/g,
+                    /(history\.go\s*\(\s*1|history\.forward\s*\()/, 220);
+                if (undo) {
+                    return 'A handler puts the page back into the history as soon as you press back, ' +
+                           'so the button cannot leave.';
+                }
+
+                // Or the same thing done by filling the history in a loop.
+                var flood = nearby(code, /history\.pushstate/g, /(setinterval|for\s*\(|while\s*\()/, 150);
+                if (flood) {
+                    return 'The page writes itself into the browser history repeatedly, which leaves ' +
+                           'the back button with nowhere to go.';
+                }
+                return null;
             }
         },
         {
@@ -3387,6 +3593,10 @@
         };
         ctx.hasPassword = !!(doc && doc.querySelector('input[type="password"]'));
         ctx.claims = doc ? claimedBrands(ctx) : [];
+        /* Read once, and never on a page whose words belong to its visitors:
+           quoting a test page into a chat window is not being one. */
+        ctx.signature = (doc && !context.userDriven)
+            ? INTEL.matchPageSignature(ctx.text + ' ' + (doc.title || '')) : null;
 
         var results = [];
         var threatPoints = 0;
@@ -3521,10 +3731,22 @@
         var verdict = rating.verdict;
         var blocked = false;
 
-        /* A reputation hit is not a matter of degree: it is a name we already
-           know, and the report should say so rather than quote a number. */
-        var identified = ctx.intel || (failedIds.indexOf('test-page-signature') !== -1
-            ? INTEL.matchPageSignature(ctx.text + ' ' + (doc ? doc.title || '' : '')) : null);
+        /*
+         * Recognition is not a matter of degree, but it does need evidence.
+         * An address on the block list, or a page that says outright it is a
+         * security test, is recognised. An address that merely looks like a
+         * test page is only recognised when the content agrees - or when
+         * there is no content to ask, as on an address-only scan.
+         */
+        var identified = null;
+        var strongUrl = ctx.intel && ctx.intel.strength === 'strong';
+        if (ctx.intel && ctx.intel.severity === 'block') {
+            identified = ctx.intel;                       // somebody's own block list
+        } else if (ctx.signature && ctx.signature.severity === 'block') {
+            identified = ctx.signature;                   // the page says so outright
+        } else if (strongUrl && (ctx.signature || !doc)) {
+            identified = ctx.intel;                       // address and content agree
+        }
         if (identified) {
             blocked = true;
             verdict = THREAT_VERDICTS[identified.kind] || 'Known threat';
@@ -3590,6 +3812,6 @@
         checks: CHECKS,
         patterns: PATTERNS,
         intel: INTEL,
-        version: '2.0.0'
+        version: '3.0.0'
     };
 }));

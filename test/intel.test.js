@@ -17,7 +17,8 @@ function idsOf(report) {
 
 test('the published anti-phishing feature check is recognised by its address', () => {
     // The page the extension missed: ordinary markup, reputable domain, and
-    // reachable only when an anti-phishing filter is doing nothing.
+    // reachable only when an anti-phishing filter is doing nothing. No host is
+    // named anywhere in the feed - the address is recognised by what it says.
     const report = SpamAnalyzer.analyze('https://www.amtso.org/check-desktop-phishing-page/');
     assert.strictEqual(report.blocked, true);
     assert.strictEqual(report.rating, 'F');
@@ -27,12 +28,18 @@ test('the published anti-phishing feature check is recognised by its address', (
     assert.strictEqual(report.threat.kind, 'phishing');
 });
 
-test('the other feature checks on the same site are recognised too', () => {
+test('the same shape of address is recognised whoever publishes it', () => {
+    // Nothing here is a host the feed has ever seen; each address describes
+    // the test it serves, which is the whole mechanism.
     const cases = [
         ['https://www.amtso.org/check-desktop-download/', 'malware'],
         ['https://www.amtso.org/check-desktop-pua/', 'pua'],
-        ['https://www.amtso.org/feature-settings-check-malware-page/', 'malware'],
-        ['https://www.amtso.org/check-mobile-phishing-page/', 'phishing']
+        ['https://securityvendor.example.com/feature-settings-check-malware-page/', 'malware'],
+        ['https://some-other-lab.example.net/check-mobile-phishing-page/', 'phishing'],
+        ['https://testsafebrowsing.appspot.com/s/phishing.html', 'phishing'],
+        ['https://www.itisatrap.org/firefox/its-a-trap.html', 'phishing'],
+        ['https://www.itisatrap.org/firefox/its-an-attack.html', 'malware'],
+        ['https://secure.eicar.org/eicar.com', 'malware']
     ];
     cases.forEach(([url, kind]) => {
         const report = SpamAnalyzer.analyze(url);
@@ -41,24 +48,23 @@ test('the other feature checks on the same site are recognised too', () => {
     });
 });
 
-test('the rest of that site is left alone', () => {
-    // Only the test pages are listed; amtso.org itself is an ordinary site.
-    const report = SpamAnalyzer.analyze('https://www.amtso.org/about/');
-    assert.strictEqual(report.blocked, false);
-    assert.strictEqual(report.score, 100);
+test('the rest of such a site is left alone', () => {
+    // The home page and the about page describe nothing, so they are ordinary.
+    ['https://www.amtso.org/', 'https://www.amtso.org/about/', 'https://www.wicar.org/'].forEach((url) => {
+        const report = SpamAnalyzer.analyze(url);
+        assert.strictEqual(report.blocked, false, `${url} was blocked`);
+        assert.strictEqual(report.score, 100, `${url} scored ${report.score}`);
+    });
 });
 
-test('the other industry test resources are recognised', () => {
-    const urls = [
-        'https://testsafebrowsing.appspot.com/s/phishing.html',
-        'https://www.itisatrap.org/firefox/its-a-trap.html',
-        'https://www.itisatrap.org/firefox/its-an-attack.html',
-        'http://www.wicar.org/test-malware.html',
-        'https://secure.eicar.org/eicar.com'
-    ];
-    urls.forEach((url) => {
-        assert.strictEqual(SpamAnalyzer.analyze(url).blocked, true, `${url} was not recognised`);
-    });
+test('an address that could equally belong to an article does not block on its own', () => {
+    // "phishing-test" in a path is not the same kind of evidence as
+    // "check-desktop-phishing-page". Without the page to confirm it, it is
+    // reported and not acted on.
+    const report = SpamAnalyzer.analyze('https://blog.example.com/security/phishing-test-page-explained');
+    assert.ok(idsOf(report).includes('known-threat'));
+    assert.strictEqual(report.blocked, false);
+    assert.ok(report.score >= 60, `got ${report.score}`);
 });
 
 test('an administrator can add addresses without editing the code', () => {
