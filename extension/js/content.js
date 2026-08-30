@@ -264,6 +264,8 @@
                 report: {
                     url: report.url, score: report.score, rating: report.rating,
                     verdict: report.verdict, level: report.level,
+                    blocked: report.blocked, threat: report.threat,
+                    patterns: report.patterns.length,
                     failed: report.failed.length, total: report.totalTests,
                     analysedAt: report.analysedAt
                 }
@@ -435,6 +437,21 @@
         var body = elements.body;
         body.replaceChildren();
 
+        /* A recognised threat is not a matter of degree - it goes first, above
+           the score, because the score is no longer the interesting part. */
+        if (report.blocked && report.threat) {
+            var threat = el('div', 'ssc-threat');
+            threat.appendChild(icon('alert'));
+            var threatText = el('div', 'ssc-threat__text');
+            threatText.appendChild(el('span', 'ssc-threat__title', report.verdict));
+            threatText.appendChild(el('span', 'ssc-threat__body',
+                report.threat.label + '. ' + report.threat.detail));
+            threatText.appendChild(el('span', 'ssc-threat__source',
+                'Recognised by: ' + report.threat.source + ' · do not sign in or download anything here.'));
+            threat.appendChild(threatText);
+            body.appendChild(threat);
+        }
+
         /* verdict */
         var summary = el('div', 'ssc-summary ssc-level--' + report.level);
         summary.appendChild(buildRing(report));
@@ -456,6 +473,32 @@
                 'The score is held at ' + report.scoreCap + ' or below: ' +
                 report.cappedBy.length + ' finding(s) are conclusive on their own.'));
             body.appendChild(cap);
+        }
+
+        /* Why the wording tests were left out - the words here are not the
+           site's own, and saying so is more useful than a silent skip. */
+        if (report.context && report.context.userDriven) {
+            var note = el('div', 'ssc-note');
+            note.appendChild(icon('check'));
+            note.appendChild(el('span', null, report.context.reason));
+            body.appendChild(note);
+        }
+
+        /* Findings that only mean something in combination. */
+        if (report.patterns && report.patterns.length) {
+            var patternSection = el('section', 'ssc-section');
+            var patternTitle = el('h3', 'ssc-section__title');
+            patternTitle.appendChild(el('span', null, 'Attack patterns recognised'));
+            patternTitle.appendChild(el('span', 'ssc-count', String(report.patterns.length)));
+            patternSection.appendChild(patternTitle);
+            report.patterns.forEach(function (pattern) {
+                var box = el('div', 'ssc-pattern');
+                box.appendChild(el('strong', 'ssc-pattern__title', pattern.title));
+                box.appendChild(el('span', 'ssc-pattern__body', pattern.about));
+                box.appendChild(el('span', 'ssc-pattern__evidence', pattern.detail));
+                patternSection.appendChild(box);
+            });
+            body.appendChild(patternSection);
         }
 
         /* findings */
@@ -1022,6 +1065,9 @@
                 sendResponse({report: lastReport ? {
                     url: lastReport.url, score: lastReport.score, rating: lastReport.rating,
                     verdict: lastReport.verdict, level: lastReport.level,
+                    blocked: lastReport.blocked, threat: lastReport.threat,
+                    patterns: lastReport.patterns,
+                    context: lastReport.context,
                     failed: lastReport.failed.slice(0, 6), total: lastReport.totalTests,
                     failedCount: lastReport.failed.length
                 } : null});
@@ -1043,6 +1089,26 @@
 
     /* --------------------------------------------------------------- start */
 
+    /*
+     * An administrator - or a student testing the extension - can add
+     * addresses of their own without editing the code. They are read once at
+     * start-up and handed to the reputation layer.
+     */
+    function loadLocalBlockList(done) {
+        try {
+            chrome.storage.local.get({blockList: []}, function (stored) {
+                void chrome.runtime.lastError;
+                if (stored && stored.blockList && stored.blockList.length &&
+                    window.SpamAnalyzer && window.SpamAnalyzer.addThreatEntries) {
+                    window.SpamAnalyzer.addThreatEntries(stored.blockList);
+                }
+                done();
+            });
+        } catch (e) {
+            done();          // running outside the extension - demo page mode
+        }
+    }
+
     function start() {
         buildUi();
         makeDraggable();
@@ -1056,7 +1122,9 @@
         /* Scan on arrival so the pill already shows the verdict. The short
            delay lets the page finish drawing, since half the checks read the
            rendered document. */
-        window.setTimeout(function () { runTests(true, true); }, 500);
+        window.setTimeout(function () {
+            loadLocalBlockList(function () { runTests(true, true); });
+        }, 500);
         try {
             chrome.storage.sync.get({showButton: true}, function (prefs) {
                 applyVisibility(prefs.showButton);

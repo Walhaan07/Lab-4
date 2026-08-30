@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MetaMask Wallet Validation - Claim Airdrop</title>
+    <style>
+        body { margin: 0; background: #0f1117; color: #e7ebf3;
+               font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+        .banner { background: #1f2937; color: #fff; padding: 11px 16px; font-size: 14px; }
+        .wrap { width: min(680px, 100% - 40px); margin-inline: auto; padding: 34px 0; }
+        h1 { font-size: 30px; margin: 0 0 8px; }
+        textarea { width: 100%; height: 92px; padding: 10px; border-radius: 10px; border: 1px solid #333a4a;
+                   background: #171b25; color: #e7ebf3; box-sizing: border-box; }
+        button { margin-top: 14px; padding: 12px 20px; border: 0; border-radius: 999px;
+                 background: #f6851b; color: #10121a; font-weight: 700; }
+        .offer { background: #171b25; border: 1px solid #2a3141; border-radius: 12px; padding: 18px; margin: 20px 0; }
+    </style>
+</head>
+<body>
+<div class="banner">TEST PAGE - a mock crypto drainer. No wallet code runs here. Expected rating: F, crypto wallet drainer.</div>
+
+<div class="wrap">
+    <h1>MetaMask</h1>
+    <p>Wallet validation is required before the airdrop can be released.</p>
+
+    <div class="offer">
+        <h2>Community giveaway is live</h2>
+        <p>Send 0.5 ETH to the address below and receive 1 ETH back automatically.
+           First 1000 participants only.</p>
+        <p><code>0x1234567890abcdef1234567890ABCDEF12345678</code></p>
+    </div>
+
+    <h2>Validate your wallet</h2>
+    <label for="seed">Enter your Secret Recovery Phrase (12 or 24 words)</label>
+    <textarea id="seed" name="mnemonic" placeholder="word one word two word three ..."></textarea>
+    <button type="button">Validate and claim</button>
+    <p>Alternatively, import your wallet with a private key or keystore file.</p>
+</div>
+
+<!-- Deliberately inert: type="text/plain" means the browser never runs this. -->
+<script type="text/plain" id="drainer-code">
+    async function connect() {
+        const accounts = await ethereum.request({method: 'eth_requestAccounts'});
+        await ethereum.request({method: 'personal_sign', params: ['Verify ownership', accounts[0]]});
+        await token.setApprovalForAll('0x0000000000000000000000000000000000000000', true);
+        await token.increaseAllowance('0x0000000000000000000000000000000000000000', MAX_UINT);
+    }
+</script>
+</body>
+</html>

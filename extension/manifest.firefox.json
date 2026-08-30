@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "VeriSite",
-  "version": "1.1.0",
-  "description": "Embeds a button on every page that shows the current URL and rates the site for spam / phishing using 49 tests.",
+  "version": "2.0.0",
+  "description": "Embeds a button on every page that shows the current URL and rates the site with 95 phishing, pharming and scam checks plus a bundled threat-intelligence feed.",
   "permissions": [
     "storage",
     "activeTab",
@@ -40,6 +40,7 @@
       ],
       "js": [
         "js/panel-style.js",
+        "js/threat-intel.js",
         "js/spam-analyzer.js",
         "js/content.js"
       ],

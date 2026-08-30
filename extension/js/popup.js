@@ -23,10 +23,34 @@ function show(report) {
     $('detail').textContent = failedCount
         ? `${failedCount} of ${report.total} checks raised a finding`
         : `All ${report.total} checks passed`;
-    $('checkCount').textContent = `${report.total} heuristic checks`;
+    $('checkCount').textContent = `${report.total} checks · reputation + heuristics`;
 
     const list = $('findings');
     list.replaceChildren();
+
+    // A known address outranks anything the heuristics found.
+    if (report.blocked && report.threat) {
+        const li = document.createElement('li');
+        li.className = 'high';
+        li.textContent = `${report.threat.label} — recognised by ${report.threat.source}. Do not sign in or download here.`;
+        list.appendChild(li);
+    }
+
+    // Why the wording checks stood down, when they did.
+    if (report.context && report.context.userDriven) {
+        const li = document.createElement('li');
+        li.textContent = report.context.reason;
+        list.appendChild(li);
+    }
+
+    if (Array.isArray(report.patterns)) {
+        report.patterns.forEach((pattern) => {
+            const li = document.createElement('li');
+            li.className = 'high';
+            li.textContent = `Pattern: ${pattern.title}. ${pattern.detail}`;
+            list.appendChild(li);
+        });
+    }
     if (Array.isArray(report.failed)) {
         report.failed.slice(0, 5).forEach((check) => {
             const li = document.createElement('li');

@@ -1,29 +1,61 @@
 /*
  * spam-analyzer.js  --  Demo 4 (Lab 4)
  * ---------------------------------------------------------------------------
- * Heuristic spam / phishing analyser.
+ * Phishing / pharming / scam analyser.
  *
  * Loaded by the extension's content script (window.SpamAnalyzer) and by the
  * Node.js unit tests (require('./spam-analyzer')).
  *
- * It performs 49 independent tests. Every test that "hits" adds penalty points;
- * the score is derived from the penalty relative to the tests that could run,
- * and a few near-conclusive tests also cap it (see analyze()).
+ * Three layers decide the verdict:
  *
- * NOTE: this is a client side heuristic scanner written for a lab exercise.
- * It never contacts a remote blocklist, so it can produce false positives and
- * must not be treated as real anti-phishing protection.
+ *   1. Reputation   threat-intel.js recognises addresses that are known to be
+ *                   dangerous or that exist to be blocked - the published
+ *                   anti-phishing feature test pages among them. A heuristic
+ *                   can never catch those: they are ordinary, well made pages
+ *                   on reputable domains, and every structural test passes.
+ *   2. Heuristics   the independent tests below, each one a single question
+ *                   about the address, the transport, the forms, the wording
+ *                   or the scripts.
+ *   3. Correlation  patterns over the findings. Three mild signals that always
+ *                   appear together in a credential kit say more than the sum
+ *                   of the three, and the PATTERNS table is where that is
+ *                   written down.
+ *
+ * Scoring: every finding adds penalty points, the score is the distance from
+ * a fixed points budget (not from the number of tests, so adding a test never
+ * dilutes the ones already there), near-conclusive findings cap the score, and
+ * a reputation hit blocks outright.
+ *
+ * NOTE: this is a client side scanner written for a lab exercise. It never
+ * contacts a remote blocklist, so its knowledge is only as fresh as the
+ * bundled feed, it can produce false positives, and it must not be relied on
+ * as somebody's only anti-phishing protection.
  * ---------------------------------------------------------------------------
  */
 (function (root, factory) {
     'use strict';
     if (typeof module === 'object' && module.exports) {
-        module.exports = factory();               // Node.js unit tests
+        module.exports = factory(require('./threat-intel.js'));      // Node.js unit tests
     } else {
-        root.SpamAnalyzer = factory();            // browser + extension
+        root.SpamAnalyzer = factory(root.VeriSiteThreatIntel);       // browser + extension
     }
-}(typeof self !== 'undefined' ? self : this, function () {
+}(typeof self !== 'undefined' ? self : this, function (ThreatIntel) {
     'use strict';
+
+    /* The reputation layer is a separate file, so the analyser keeps working -
+       heuristics only - if it ever fails to load. */
+    var INTEL = ThreatIntel || {
+        version: 'unavailable',
+        lookup: function () { return null; },
+        matchPageSignature: function () { return null; },
+        exfilEndpoints: function () { return []; },
+        kitPaths: function () { return []; },
+        freeHost: function () { return null; },
+        dynamicDns: function () { return null; },
+        isOfficialDomain: function () { return false; },
+        addEntries: function () { return 0; },
+        userEntryCount: function () { return 0; }
+    };
 
     /* ---------------------------------------------------------------- data */
 
@@ -144,6 +176,274 @@
 
     // Second level labels that are part of the public suffix (co.uk, com.au ...)
     var SECOND_LEVEL = ['co', 'com', 'net', 'org', 'gov', 'edu', 'ac', 'mil', 'sch'];
+
+    /* ------------------------------------------------ data added in v2.0 */
+
+    // Which domain each brand actually signs its customers in on.
+    var BRAND_SITES = {
+        paypal: 'paypal.com', apple: 'apple.com', icloud: 'icloud.com',
+        microsoft: 'microsoft.com', office365: 'office.com', outlook: 'outlook.com',
+        google: 'google.com', gmail: 'google.com', facebook: 'facebook.com',
+        instagram: 'instagram.com', whatsapp: 'whatsapp.com', netflix: 'netflix.com',
+        amazon: 'amazon.com', ebay: 'ebay.com', dhl: 'dhl.com', fedex: 'fedex.com',
+        ups: 'ups.com', hsbc: 'hsbc.com', barclays: 'barclays.co.uk', chase: 'chase.com',
+        wellsfargo: 'wellsfargo.com', citibank: 'citi.com', santander: 'santander.com',
+        revolut: 'revolut.com', binance: 'binance.com', coinbase: 'coinbase.com',
+        metamask: 'metamask.io', blockchain: 'blockchain.com', steam: 'steampowered.com',
+        roblox: 'roblox.com', linkedin: 'linkedin.com', dropbox: 'dropbox.com'
+    };
+
+    /*
+     * The other domains each brand really runs. Microsoft signs people in on
+     * live.com, Amazon serves from amazonaws.com, PayPal's images come from
+     * paypalobjects.com. Without this, outlook.live.com reads as "the word
+     * outlook on a domain that is not outlook.com" - which is exactly the
+     * shape of a phishing host, and exactly wrong here.
+     */
+    var BRAND_OWNED = {
+        paypal: ['paypal.com', 'paypalobjects.com', 'paypal.me', 'paypal.co.uk', 'paypal-community.com'],
+        apple: ['apple.com', 'icloud.com', 'apple.news', 'applecare.com', 'icloud-content.com', 'itunes.com'],
+        icloud: ['icloud.com', 'apple.com', 'icloud-content.com'],
+        microsoft: ['microsoft.com', 'microsoftonline.com', 'live.com', 'office.com', 'office365.com',
+                    'msn.com', 'outlook.com', 'sharepoint.com', 'azure.com', 'microsoft.net',
+                    'microsoftstore.com', 'windows.com', 'skype.com', 'bing.com', 'xbox.com'],
+        office365: ['office.com', 'office365.com', 'microsoft.com', 'microsoftonline.com', 'live.com', 'sharepoint.com'],
+        outlook: ['outlook.com', 'live.com', 'office.com', 'microsoft.com', 'microsoftonline.com', 'hotmail.com'],
+        google: ['google.com', 'googleapis.com', 'googleusercontent.com', 'gmail.com', 'youtube.com',
+                 'googlesource.com', 'goo.gl', 'withgoogle.com', 'google.co.uk', 'blogger.com'],
+        gmail: ['gmail.com', 'google.com', 'googlemail.com'],
+        facebook: ['facebook.com', 'fbcdn.net', 'facebook.net', 'meta.com', 'messenger.com', 'fb.com'],
+        instagram: ['instagram.com', 'cdninstagram.com', 'facebook.com', 'meta.com'],
+        whatsapp: ['whatsapp.com', 'whatsapp.net', 'meta.com', 'facebook.com'],
+        netflix: ['netflix.com', 'nflximg.net', 'nflxvideo.net', 'nflxext.com'],
+        amazon: ['amazon.com', 'amazonaws.com', 'amazon.co.uk', 'amazon.de', 'amazon.fr', 'amazon.in',
+                 'amazon.ca', 'amazon.com.au', 'amazon.co.jp', 'media-amazon.com', 'ssl-images-amazon.com',
+                 'primevideo.com', 'audible.com'],
+        ebay: ['ebay.com', 'ebay.co.uk', 'ebayimg.com', 'ebaystatic.com'],
+        dhl: ['dhl.com', 'dhl.de', 'dhl.co.uk', 'dpdhl.com'],
+        fedex: ['fedex.com', 'fedex.co.uk'],
+        ups: ['ups.com', 'ups.co.uk'],
+        hsbc: ['hsbc.com', 'hsbc.co.uk', 'hsbc.ca', 'hsbcnet.com'],
+        barclays: ['barclays.co.uk', 'barclays.com', 'barclaycard.co.uk'],
+        chase: ['chase.com', 'chase.co.uk', 'jpmorgan.com'],
+        wellsfargo: ['wellsfargo.com', 'wellsfargomedia.com'],
+        citibank: ['citi.com', 'citibank.com', 'citigroup.com'],
+        santander: ['santander.com', 'santander.co.uk', 'santanderbank.com'],
+        revolut: ['revolut.com', 'revolut.me'],
+        binance: ['binance.com', 'binance.us', 'bnbstatic.com'],
+        coinbase: ['coinbase.com', 'coinbase-assets.com', 'cbhq.net'],
+        metamask: ['metamask.io', 'consensys.net'],
+        blockchain: ['blockchain.com', 'blockchain.info'],
+        steam: ['steampowered.com', 'steamcommunity.com', 'steamstatic.com', 'valvesoftware.com'],
+        roblox: ['roblox.com', 'rbxcdn.com'],
+        linkedin: ['linkedin.com', 'licdn.com'],
+        dropbox: ['dropbox.com', 'dropboxusercontent.com', 'dropboxstatic.com']
+    };
+
+    // Words that only make sense if the page wants a wallet's recovery phrase.
+    var SEED_PHRASE_WORDS = [
+        'seed phrase', 'secret recovery phrase', 'recovery phrase', 'mnemonic phrase',
+        'twelve word', '12-word', '12 word phrase', '24-word', 'backup phrase',
+        'private key', 'keystore file', 'wallet passphrase', 'import your wallet'
+    ];
+
+    // Wallet calls a drainer needs: connect, then sign away the contents.
+    var DRAINER_METHODS = [
+        'eth_requestaccounts', 'personal_sign', 'eth_signtypeddata', 'eth_sign',
+        'setapprovalforall', 'increaseallowance', 'approve(', 'transferfrom(',
+        'walletconnect', 'signalltransactions', 'signandsendtransaction'
+    ];
+
+    /*
+     * "ClickFix": the page pretends to be a CAPTCHA and talks the visitor into
+     * running a command themselves, which side-steps every download warning
+     * the browser has.
+     */
+    var CLICKFIX_PHRASES = [
+        'press windows + r', 'windows key + r', 'win + r', 'press ctrl + v',
+        'open powershell', 'paste it into', 'press enter to verify',
+        'verify you are human by', 'run the command', 'terminal window',
+        'i am not a robot' 
+    ];
+
+    var CLIPBOARD_CALLS = ['navigator.clipboard.writetext', 'document.execcommand(\'copy\')',
+                           'document.execcommand("copy")', 'clipboarddata.setdata'];
+
+    // Payment methods that cannot be reversed once handed over.
+    var GIFT_CARD_PHRASES = [
+        'gift card code', 'itunes card', 'google play card', 'steam wallet code',
+        'amazon gift card', 'scratch the back', 'send the code', 'voucher code to',
+        'apple gift card', 'prepaid card code'
+    ];
+
+    var GIVEAWAY_PHRASES = [
+        'send 0.', 'send 1 btc', 'double your', 'get back twice', 'x2 your',
+        'giveaway is live', 'first 1000 participants', 'send eth receive',
+        'multiply your crypto', 'return double'
+    ];
+
+    var INVESTMENT_PHRASES = [
+        'guaranteed profit', 'guaranteed return', 'guaranteed daily', 'roi daily',
+        'risk-free investment', 'passive income guaranteed', 'withdraw anytime',
+        'trading bot profit', 'signal group profit', '% daily'
+    ];
+
+    var SURVEY_PHRASES = [
+        'you have been selected', 'spin the wheel', 'claim your reward',
+        'complete this survey', 'you are today\'s lucky', 'congratulations, you are the',
+        'select a gift below', 'you are the winner of'
+    ];
+
+    var FAKE_UPDATE_PHRASES = [
+        'your browser is out of date', 'update your browser to continue',
+        'flash player is out of date', 'chrome update required', 'critical update required',
+        'your version is outdated', 'install the update to continue', 'driver update required'
+    ];
+
+    var FAKE_CAPTCHA_PHRASES = [
+        'click allow to verify', 'press allow to continue', 'allow to confirm you are not a robot',
+        'click allow if you are not a robot', 'tap allow to continue', 'allow notifications to verify'
+    ];
+
+    // Security badges a page can claim without ever being audited.
+    var SECURITY_SEALS = [
+        'norton secured', 'mcafee secure', 'verified by visa', 'trustwave secured',
+        'ssl secured', 'secured by ssl', '100% secure checkout', 'digicert secured',
+        'godaddy verified', 'bbb accredited'
+    ];
+
+    // Vendors whose seal images must come from the vendor's own domain.
+    var SEAL_DOMAINS = ['norton.com', 'mcafee.com', 'digicert.com', 'trustwave.com',
+                        'visa.com', 'bbb.org', 'godaddy.com', 'sectigo.com', 'truste.com'];
+
+    var OTP_HINTS = ['one-time code', 'one time code', 'verification code', 'security code',
+                     'authentication code', '2fa code', 'two-factor', 'sms code', 'otp',
+                     'authenticator app code'];
+
+    var ID_DOCUMENT_WORDS = ['passport', 'driving licence', 'driver license', 'driver\'s license',
+                             'id card photo', 'selfie with', 'proof of identity', 'national id',
+                             'upload your id', 'photo of your id'];
+
+    // Scripts that hide the page from anything that is not a human visitor.
+    var CLOAKING_TOKENS = ['navigator.webdriver', 'googlebot', 'bingbot', 'phantomjs',
+                           'headlesschrome', 'crawler', 'spider', '/bot|crawl|spider/'];
+
+    // Scripts that try to keep the page away from developer tools.
+    var DEVTOOLS_TOKENS = ['contextmenu', 'keycode==123', 'keycode === 123', 'e.keycode==123',
+                           'devtools', 'debugger;', 'ctrlkey&&e.keycode==85', 'disable right click',
+                           'oncontextmenu'];
+
+    var DNS_CHANGE_PHRASES = ['change your dns', 'set your dns to', 'dns server address',
+                              'update your router settings', 'router configuration required',
+                              'enter your router password', 'admin password of your router'];
+
+    // Administration paths on the sort of home router a pharming attack rewrites.
+    var ROUTER_PATHS = ['/cgi-bin/luci', '/hnap1', '/setup.cgi', '/apply.cgi', '/tmunblock.cgi',
+                        '/dnscfg.cgi', '/goform/', '/userrpm/', '/cgi-bin/webproc'];
+
+    var GATEWAY_IPS = ['192.168.0.1', '192.168.1.1', '192.168.1.254', '192.168.100.1',
+                       '10.0.0.1', '10.0.0.138', '10.1.1.1', '172.16.0.1'];
+
+    // RFC1918 / loopback / link-local, i.e. addresses that only exist inside a network.
+    var PRIVATE_IP = /\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|169\.254\.\d{1,3}\.\d{1,3})\b/;
+
+    var SUPPORT_NUMBER = /(?:\+?\d{1,3}[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?){2}\d{4}|\b1[\s.-]?8(?:00|55|66|77|88)[\s.-]?\d{3}[\s.-]?\d{4}\b/;
+
+    // Files a page can offer that install something rather than show something.
+    var INSTALL_EXT = ['.apk', '.mobileconfig', '.msix', '.appx', '.pkg', '.deb', '.crx', '.xpi'];
+
+    var ARCHIVE_EXT = ['.zip', '.rar', '.7z', '.iso', '.img', '.gz', '.cab', '.ace'];
+
+    /*
+     * Pages whose visible words are written by whoever is using them, not by
+     * the site. Typing "congratulations you won a free gift card" into an
+     * assistant, or searching for it, must not make the assistant look like a
+     * scam - the words are the visitor's, and the wording tests have to know
+     * the difference between what a page says and what it is merely showing.
+     */
+    var USER_CONTENT_SITES = [
+        {kind: 'assistant', hosts: ['chatgpt.com', 'openai.com', 'claude.ai', 'anthropic.com',
+                                    'gemini.google.com', 'bard.google.com', 'copilot.microsoft.com',
+                                    'perplexity.ai', 'poe.com', 'character.ai', 'huggingface.co',
+                                    'deepseek.com', 'mistral.ai', 'you.com', 'phind.com', 'grok.com',
+                                    'x.ai', 'meta.ai', 'pi.ai', 'lmarena.ai', 'chatbotui.com']},
+        {kind: 'search', hosts: ['google.com', 'google.co.uk', 'bing.com', 'duckduckgo.com',
+                                 'search.yahoo.com', 'yahoo.com', 'ecosia.org', 'startpage.com',
+                                 'qwant.com', 'baidu.com', 'yandex.com', 'brave.com', 'searx.be',
+                                 'ask.com', 'mojeek.com']},
+        {kind: 'mail', hosts: ['mail.google.com', 'outlook.com', 'outlook.live.com', 'outlook.office.com',
+                               'live.com', 'mail.yahoo.com', 'proton.me', 'protonmail.com',
+                               'zoho.com', 'mail.com', 'fastmail.com', 'gmx.com', 'roundcube.net']},
+        {kind: 'social', hosts: ['x.com', 'twitter.com', 'facebook.com', 'instagram.com',
+                                 'reddit.com', 'linkedin.com', 'tiktok.com', 'youtube.com',
+                                 'threads.net', 'bsky.app', 'mastodon.social', 'discord.com',
+                                 'telegram.org', 'web.whatsapp.com', 'pinterest.com', 'tumblr.com',
+                                 'snapchat.com', 'twitch.tv', 'vk.com', 'weibo.com']},
+        {kind: 'community', hosts: ['stackoverflow.com', 'stackexchange.com', 'superuser.com',
+                                    'serverfault.com', 'askubuntu.com', 'quora.com', 'medium.com',
+                                    'substack.com', 'wikipedia.org', 'wikimedia.org', 'github.com',
+                                    'gitlab.com', 'bitbucket.org', 'notion.so', 'docs.google.com',
+                                    'drive.google.com', 'slack.com', 'teams.microsoft.com',
+                                    'trello.com', 'atlassian.net', 'hackernews.com', 'ycombinator.com',
+                                    'discourse.org', 'forums.mozilla.org']},
+        {kind: 'marketplace', hosts: ['amazon.com', 'amazon.co.uk', 'ebay.com', 'ebay.co.uk',
+                                      'etsy.com', 'aliexpress.com', 'trustpilot.com', 'yelp.com',
+                                      'tripadvisor.com', 'booking.com', 'gumtree.com', 'craigslist.org']}
+    ];
+
+    /*
+     * Regions of a page that hold what the visitor typed or what another
+     * visitor wrote. Their text is removed before the wording tests read the
+     * page, so a search box, a chat composer or a quoted message can never be
+     * mistaken for the site's own claims.
+     */
+    var USER_REGION_SELECTOR = [
+        'input', 'textarea', 'select', 'option',
+        '[contenteditable="true"]', '[contenteditable=""]', '[role="textbox"]',
+        '[role="searchbox"]', '[role="combobox"]', '[role="log"]',
+        '.ProseMirror', '.CodeMirror', '.monaco-editor', '.ql-editor',
+        '[data-message-author-role]', '[data-testid*="conversation"]',
+        '[class*="message-content"]', '[class*="chat-message"]',
+        '[class*="user-message"]'
+    ].join(', ');
+
+    /*
+     * Quotes, comments, reviews and code blocks belong to other people - but
+     * only on a page that hosts other people's writing. Ignoring them
+     * everywhere would hand any scam page a way through: wrap the pitch in
+     * <blockquote> and the wording tests would never read it.
+     */
+    var QUOTED_REGION_SELECTOR = [
+        'blockquote', 'code', 'pre', '[class*="comment-body"]', '[id*="comment"]',
+        '[class*="review-text"]', '[class*="quote"]'
+    ].join(', ');
+
+    // Query parameters that carry whatever the visitor asked for.
+    var QUERY_PARAMS = ['q', 'query', 's', 'search', 'search_query', 'k', 'p', 'text',
+                        'prompt', 'question', 'wd', 'keyword', 'keywords'];
+
+    /*
+     * Scoring constants. The score is the distance from a fixed points budget
+     * rather than from the total weight of the test suite: adding a test must
+     * make the scanner sharper, never gentler on the pages it already caught.
+     */
+    var RISK_POINTS_PAGE = 60;      // points that take a full page scan to zero
+    var RISK_POINTS_URL = 35;       // ... and an address-only scan, which has fewer signals
+    var HYGIENE_BUDGET = 12;        // most a page can lose for nuisance-only findings
+
+    /*
+     * Findings that describe a badly behaved page rather than a dangerous one.
+     * A news site with eight ad slots and no contact link is annoying, not a
+     * threat, so those findings share a small budget and cannot by themselves
+     * push an honest site out of the safe band.
+     */
+    var HYGIENE_CHECKS = {
+        'third-party-scripts': true, 'ad-density': true, 'contact-info': true,
+        'external-links': true, 'shouty-text': true, 'hidden-text': true,
+        'overlay-ads': true, 'query-complexity': true, 'permission-abuse': true,
+        'subscription-trap': true, 'site-identity': true, 'hidden-iframes': true,
+        'popup-traps': true, 'redirect-chain': true, 'free-subdomain-host': true
+    };
 
     /* ------------------------------------------------------------- helpers */
 
@@ -396,6 +696,218 @@
         }
     }
 
+    /* --------------------------------------------------- helpers added in v2.0 */
+
+    /** Source of every inline <script> on the page, capped for speed. */
+    function inlineScriptSource(doc) {
+        var code = '';
+        try {
+            var tags = doc.querySelectorAll('script:not([src])');
+            for (var i = 0; i < tags.length && code.length < 200000; i++) {
+                code += (tags[i].textContent || '') + '\n';
+            }
+            // Inline handlers hide the same behaviour in an attribute.
+            var handlers = doc.querySelectorAll('[onclick], [onload], [onsubmit], [oncontextmenu], [onkeydown]');
+            for (var j = 0; j < handlers.length && code.length < 220000; j++) {
+                ['onclick', 'onload', 'onsubmit', 'oncontextmenu', 'onkeydown'].forEach(function (name) {
+                    var value = handlers[j].getAttribute(name);
+                    if (value) { code += value + '\n'; }
+                });
+            }
+        } catch (e) { /* hostile document - what we have is enough */ }
+        return code.slice(0, 220000);
+    }
+
+    /** The page's own markup, capped, for tests that need attributes as text. */
+    function pageMarkup(doc) {
+        try {
+            var root = doc.documentElement || doc.body;
+            return (root && root.outerHTML ? root.outerHTML : (doc.body ? doc.body.innerHTML : '')).slice(0, 300000);
+        } catch (e) {
+            return '';
+        }
+    }
+
+    /** Does this domain legitimately belong to the brand? */
+    function brandOwnsDomain(brand, domain) {
+        if (!domain) { return false; }
+        var owned = BRAND_OWNED[brand];
+        if (owned && owned.indexOf(domain) !== -1) { return true; }
+        if (BRAND_SITES[brand] === domain) { return true; }
+        /* Country sites the lists above cannot enumerate: the brand is the
+           whole first label of a domain the feed already knows is official. */
+        return domain.split('.')[0] === brand && INTEL.isOfficialDomain(domain);
+    }
+
+    /**
+     * Which brands the page presents itself as - title, main heading, the
+     * site name it declares to social networks, its logo, and the copyright
+     * line. Brands the domain legitimately owns are removed, so what is left
+     * is a page wearing somebody else's name.
+     */
+    function claimedBrands(c) {
+        var claim = ' ' + (c.doc.title || '') + ' ';
+        try {
+            var heading = c.doc.querySelector('h1');
+            if (heading) { claim += (heading.textContent || '') + ' '; }
+            var meta = c.doc.querySelector('meta[property="og:site_name"], meta[name="application-name"], meta[name="author"]');
+            if (meta) { claim += (meta.getAttribute('content') || '') + ' '; }
+            var logo = c.doc.querySelector('img[alt], img[src*="logo"], [class*="logo"] img');
+            if (logo) { claim += (logo.getAttribute('alt') || '') + ' ' + (logo.getAttribute('src') || '') + ' '; }
+        } catch (e) { /* ignore */ }
+        // The copyright line is the last thing a cloned page remembers to change.
+        var tail = c.text.slice(-3000);
+        var copyright = tail.match(/(?:©|\(c\)|copyright)[^\n]{0,60}/gi);
+        if (copyright) { claim += copyright.join(' '); }
+
+        return countOccurrences(claim.toLowerCase(), BRANDS).filter(function (brand) {
+            return !brandOwnsDomain(brand, c.domain) && c.domain.indexOf(brand) === -1;
+        });
+    }
+
+    /** An address that only exists inside somebody's own network. */
+    function isPrivateHost(host) {
+        var name = String(host).replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
+        return PRIVATE_IP.test(name) || isLocalAddress(name) || /\.(local|internal|lan|home|localdomain)$/.test(name);
+    }
+
+    function resolveUrl(value, base) {
+        try {
+            return new URL(value, base);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    /** Every URL the page points at: links, forms, scripts, frames, images. */
+    function referencedUrls(doc, base, limit) {
+        var out = [];
+        var selectors = ['a[href]', 'form[action]', 'script[src]', 'iframe[src]', 'img[src]', 'link[href]'];
+        try {
+            selectors.forEach(function (selector) {
+                var nodes = doc.querySelectorAll(selector);
+                for (var i = 0; i < nodes.length && out.length < limit; i++) {
+                    var raw = nodes[i].getAttribute('href') || nodes[i].getAttribute('src') ||
+                              nodes[i].getAttribute('action');
+                    if (!raw || /^(#|javascript:|data:|mailto:|tel:)/i.test(raw)) { continue; }
+                    var url = resolveUrl(raw, base);
+                    if (url) { out.push(url); }
+                }
+            });
+        } catch (e) { /* ignore */ }
+        return out;
+    }
+
+    /* Four tests want the same list, and walking a large page four times is
+       four times the cost for the same answer. */
+    function pageRefs(c) {
+        if (!c.refs) { c.refs = c.doc ? referencedUrls(c.doc, c.href, 300) : []; }
+        return c.refs;
+    }
+
+    /** Input fields whose name, id, placeholder or label suggests a purpose. */
+    function fieldsMatching(doc, words) {
+        var hits = [];
+        try {
+            var inputs = doc.querySelectorAll('input, textarea, select');
+            for (var i = 0; i < inputs.length && hits.length < 5; i++) {
+                var input = inputs[i];
+                var hay = [input.getAttribute('name'), input.getAttribute('id'),
+                           input.getAttribute('placeholder'), input.getAttribute('aria-label'),
+                           input.getAttribute('autocomplete')].join(' ').toLowerCase();
+                for (var j = 0; j < words.length; j++) {
+                    if (hay.indexOf(words[j]) !== -1) { hits.push(words[j]); break; }
+                }
+            }
+        } catch (e) { /* ignore */ }
+        return hits;
+    }
+
+    /* ------------------------------------------- who wrote the words here */
+
+    /**
+     * Split the page's visible text into what the site says and what its
+     * visitors put there. Everything the wording tests read comes from the
+     * first of the two.
+     */
+    function splitAuthorship(doc, url, userDriven) {
+        var site = visibleText(doc);
+        var user = [];
+        var selector = USER_REGION_SELECTOR + (userDriven ? ', ' + QUOTED_REGION_SELECTOR : '');
+
+        try {
+            var regions = doc.querySelectorAll(selector);
+            for (var i = 0; i < regions.length && user.length < 60; i++) {
+                var node = regions[i];
+                var chunk = node.value || node.innerText || node.textContent || '';
+                chunk = String(chunk).replace(/\s+/g, ' ').trim();
+                if (chunk.length >= 3 && chunk.length <= 20000) { user.push(chunk); }
+            }
+        } catch (e) { /* ignore */ }
+
+        // What the visitor searched for or asked, straight out of the address.
+        try {
+            QUERY_PARAMS.forEach(function (name) {
+                var value = url && url.searchParams ? url.searchParams.get(name) : null;
+                if (value && value.length >= 3) { user.push(value.replace(/\+/g, ' ')); }
+            });
+        } catch (e) { /* ignore */ }
+
+        // Remove each of those passages from the site's own copy.
+        user.forEach(function (chunk) {
+            if (chunk.length < 3 || site.length > 400000) { return; }
+            if (site.indexOf(chunk) !== -1) { site = site.split(chunk).join(' '); }
+        });
+
+        return {site: site, user: user.join(' \n ').slice(0, 60000)};
+    }
+
+    /** Does the page look like a conversation, a feed or a set of results? */
+    function looksUserDriven(doc) {
+        try {
+            var composer = doc.querySelector('textarea, [contenteditable="true"], [role="textbox"], input[type="search"], input[name="q"]');
+            if (!composer) { return false; }
+            var conversation = doc.querySelector('[data-message-author-role], [role="log"], [role="feed"], ' +
+                                                 '[class*="conversation"], [class*="chat"], [class*="thread"], ' +
+                                                 '[class*="results"], [id*="results"], [class*="timeline"]');
+            return !!conversation;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    /**
+     * What kind of page is this, and can its wording be taken as its own?
+     * A search engine showing a scam in its results is not a scam; a page that
+     * writes the same words itself is a different matter entirely.
+     */
+    function pageContext(host, domain, doc) {
+        var context = {kind: null, userDriven: false, reason: ''};
+        var name = String(host).toLowerCase();
+
+        for (var i = 0; i < USER_CONTENT_SITES.length; i++) {
+            var group = USER_CONTENT_SITES[i];
+            for (var j = 0; j < group.hosts.length; j++) {
+                var known = group.hosts[j];
+                if (name === known || name.slice(-(known.length + 1)) === '.' + known || domain === known) {
+                    context.kind = group.kind;
+                    context.userDriven = true;
+                    context.reason = 'This is a ' + group.kind + ' page: the words on screen are written by ' +
+                                     'the people using it, so they are not read as claims made by the site.';
+                    return context;
+                }
+            }
+        }
+
+        if (doc && looksUserDriven(doc)) {
+            context.kind = 'interactive';
+            context.userDriven = true;
+            context.reason = 'The page is a conversation, feed or results list, so its visible words come ' +
+                             'from the people using it rather than from the site itself.';
+        }
+        return context;
+    }
+
     /* -------------------------------------------------------------- checks */
     /*
      * Every check returns:
@@ -452,7 +964,10 @@
             title: 'Domain is plain ASCII',
             failTitle: 'Domain uses international characters',
             category: 'URL',
-            weight: 6,
+            /* Small on purpose. An international domain is ordinary, and the
+               spoofs are caught by mixed-scripts and homograph-brand, which
+               look at what the name actually spells. */
+            weight: 3,
             run: function (c) {
                 if (c.host.indexOf('xn--') === -1) { return null; }
                 return 'The domain is stored as "' + c.host + '" and displays as "' +
@@ -521,7 +1036,12 @@
             category: 'URL',
             weight: 12,
             run: function (c) {
-                var notInDomain = function (brand) { return c.domain.indexOf(brand) === -1; };
+                /* "Not in the domain" is not the same as "not the owner":
+                   outlook.live.com and s3.amazonaws.com are the companies
+                   themselves, on a domain that does not spell their name. */
+                var notInDomain = function (brand) {
+                    return c.domain.indexOf(brand) === -1 && !brandOwnsDomain(brand, c.domain);
+                };
                 var host = subdomainLabels(c.host).join('.').toLowerCase();
                 var path = c.url.pathname.toLowerCase();
 
@@ -628,6 +1148,9 @@
             category: 'URL',
             weight: 6,
             run: function (c) {
+                /* On a company's own domain these words are just the name of
+                   the page. accounts.google.com/signin has to say "signin". */
+                if (INTEL.isOfficialDomain(c.domain) || BRAND_DOMAINS.indexOf(c.domain) !== -1) { return null; }
                 var target = (c.host + c.url.pathname + c.url.search).toLowerCase();
                 var hits = countOccurrences(target, SENSITIVE_WORDS);
                 return hits.length >= 2
@@ -970,6 +1493,7 @@
         },
         {
             id: 'spam-phrases',
+            contextual: true,     // wording only: skipped where the visitor writes the words
             about: 'The wording belongs to unsolicited advertising: prizes, guaranteed income, ' +
                    'miracle cures. Ordinary businesses describe what they sell and what it costs, ' +
                    'while scams lead with reward and urgency because they need a decision before ' +
@@ -978,7 +1502,7 @@
             failTitle: 'Classic spam wording in the text',
             category: 'Content',
             needsDom: true,
-            weight: 12,
+            weight: 15,
             run: function (c) {
                 var text = c.text.toLowerCase();
                 var strong = countOccurrences(text, SPAM_PHRASES_STRONG);
@@ -988,7 +1512,7 @@
                     return {
                         detail: 'Scam wording found: "' + strong.slice(0, 4).join('", "') + '"' +
                                 (weak.length ? ', plus ' + weak.length + ' hard-sell phrase(s).' : '.'),
-                        points: clamp(strong.length * 4 + weak.length, 4, 12)
+                        points: clamp(strong.length * 4 + weak.length, 4, 15)
                     };
                 }
 
@@ -1005,6 +1529,7 @@
         },
         {
             id: 'shouty-text',
+            contextual: true,     // wording only: skipped where the visitor writes the words
             about: 'Blocks of capitals and rows of exclamation marks are the house style of scam ' +
                    'and low quality advertising pages. Established sites write normally, because ' +
                    'shouting costs them the trust they are trying to build.',
@@ -1118,6 +1643,7 @@
         },
         {
             id: 'external-links',
+            contextual: true,     // wording only: skipped where the visitor writes the words
             about: 'Almost every link leads off the site. That is the shape of a link farm - a ' +
                    'page that exists to pass traffic and search ranking elsewhere rather than to ' +
                    'offer anything of its own.',
@@ -1233,6 +1759,7 @@
         },
         {
             id: 'fake-urgency',
+            contextual: true,     // wording only: skipped where the visitor writes the words
             about: 'Countdowns and only-a-few-left notices are designed to stop you weighing the ' +
                    'decision. Manufactured deadlines are a standard pressure technique, used by ' +
                    'outright scams and by aggressive marketing alike.',
@@ -1324,7 +1851,7 @@
                 var heading = c.doc.querySelector('h1');
                 var claim = ((c.doc.title || '') + ' ' + (heading ? heading.textContent : '')).toLowerCase();
                 var hits = countOccurrences(claim, BRANDS).filter(function (brand) {
-                    return c.domain.indexOf(brand) === -1;
+                    return c.domain.indexOf(brand) === -1 && !brandOwnsDomain(brand, c.domain);
                 });
                 return hits.length
                     ? 'The page presents itself as "' + hits[0] + '" but is served from ' + c.domain + '.'
@@ -1333,6 +1860,7 @@
         },
         {
             id: 'deceptive-links',
+            contextual: true,     // wording only: skipped where the visitor writes the words
             about: 'The visible text of a link shows one address while the link itself goes to ' +
                    'another. Reading the text is how most people check where a link leads, which ' +
                    'is exactly why this substitution is worth making.',
@@ -1391,6 +1919,7 @@
         },
         {
             id: 'scareware',
+            contextual: true,     // wording only: skipped where the visitor writes the words
             about: 'The page claims your device is infected or locked and presses you to call a ' +
                    'number or act immediately. No web page can inspect your computer, so these ' +
                    'warnings exist to sell fake support, fake fixes, or access to the machine ' +
@@ -1423,6 +1952,7 @@
         },
         {
             id: 'crypto-wallet',
+            contextual: true,     // wording only: skipped where the visitor writes the words
             about: 'A crypto wallet address is shown for payment. Such payments cannot be reversed ' +
                    'and are hard to trace, which is why giveaway scams, ransom demands and fake ' +
                    'investment schemes ask for money this way rather than by card.',
@@ -1508,8 +2038,1265 @@
                 if (c.text.length < 400) { return null; }   // tiny pages are not judged
                 return 'No contact, about or privacy information could be found on the page.';
             }
+        },
+
+        /* ------------------------- reputation / known threats (50 - 56) */
+        {
+            id: 'known-threat',
+            about: 'The address itself is known. It matches the bundled list of pages that are ' +
+                   'dangerous or that exist purely to be blocked, such as the published tests a ' +
+                   'security product is measured against. No amount of reading the markup can ' +
+                   'reveal that, which is why the list is consulted first.',
+            cap: 6,
+            title: 'Address is not on a known-threat list',
+            failTitle: 'Address is on a known-threat list',
+            category: 'Reputation',
+            weight: 25,
+            run: function (c) {
+                if (!c.intel) { return null; }
+                return {
+                    detail: c.intel.label + '. ' + c.intel.detail + ' (source: ' + c.intel.source + ')',
+                    points: 25,
+                    cap: 6
+                };
+            }
+        },
+        {
+            id: 'test-page-signature',
+            contextual: true,     // wording only: skipped where the visitor writes the words
+            about: 'The wording on the page identifies it as one of the anti-malware feature ' +
+                   'tests. Those pages are written to be reached only when protection is off, so ' +
+                   'seeing the text at all is the finding. It catches the copies and translations ' +
+                   'that the address list has never seen.',
+            cap: 10,
+            title: 'Page is not a security feature test',
+            failTitle: 'Page is a published security feature test',
+            category: 'Reputation',
+            needsDom: true,
+            weight: 20,
+            run: function (c) {
+                var signature = INTEL.matchPageSignature(c.text + ' ' + (c.doc.title || ''));
+                if (!signature) { return null; }
+                return {
+                    detail: signature.label + ': the page says "' + short(signature.phrase, 60) +
+                            '". A filter that was working would have stopped you before this loaded.',
+                    points: 20,
+                    cap: 10
+                };
+            }
+        },
+        {
+            id: 'kit-path',
+            about: 'The path is one that phishing kits ship with, or one they leave behind on a ' +
+                   'site they were dropped onto. A bank keeps its sign-in page somewhere sensible; ' +
+                   'a kit unpacked into an upload folder keeps the folder names of whatever it was ' +
+                   'unpacked into.',
+            title: 'Path is not a known phishing-kit shape',
+            failTitle: 'Path matches a known phishing-kit shape',
+            category: 'URL',
+            weight: 12,
+            run: function (c) {
+                var hits = INTEL.kitPaths(c.url.pathname + c.url.search);
+                if (!hits.length) { return null; }
+                return {
+                    detail: 'The address matches: ' + hits.join('; ') + '.',
+                    points: clamp(6 + hits.length * 3, 6, 12)
+                };
+            }
+        },
+        {
+            id: 'brand-in-domain',
+            about: 'The registrable domain - the part that decides who owns the site - contains a ' +
+                   'company\'s name without being that company\'s domain. Anyone can register ' +
+                   'apple-billing-support.com; nobody but Apple can register apple.com, which is ' +
+                   'the whole reason the ownership is worth checking.',
+            cap: 22,
+            title: 'Domain does not borrow a company name',
+            failTitle: 'Domain borrows a well known company name',
+            category: 'URL',
+            weight: 16,
+            run: function (c) {
+                if (!c.domain || INTEL.isOfficialDomain(c.domain)) { return null; }
+                var name = c.domain.split('.')[0];
+                var hits = countOccurrences(name, BRANDS).filter(function (brand) {
+                    if (brandOwnsDomain(brand, c.domain)) { return false; }
+                    // The brand must be a separate word, not a fragment of a longer one.
+                    var pattern = new RegExp('(^|[^a-z])' + brand + '($|[^a-z])');
+                    return pattern.test(name) || name === brand;
+                });
+                if (!hits.length) { return null; }
+                var official = BRAND_SITES[hits[0]] || (hits[0] + '.com');
+                return {
+                    detail: 'The domain ' + c.domain + ' contains "' + hits[0] + '" but ' + hits[0] +
+                            ' signs its customers in on ' + official + '.',
+                    points: 16,
+                    cap: 22
+                };
+            }
+        },
+        {
+            id: 'homograph-brand',
+            about: 'Written out in plain letters, the domain spells a well known brand. Letters ' +
+                   'borrowed from other alphabets are drawn identically to English ones, so the ' +
+                   'address in the bar can read as the real company while resolving to a domain ' +
+                   'nobody at that company has ever owned.',
+            cap: 8,
+            title: 'Domain does not spell a brand in look-alike letters',
+            failTitle: 'Domain spells a brand in look-alike letters',
+            category: 'URL',
+            weight: 18,
+            run: function (c) {
+                if (c.decodedDomain === c.domain && !/[^\x00-\x7F]/.test(c.decodedHost)) { return null; }
+                var skeleton = latinSkeleton(c.decodedDomain);
+                if (skeleton === c.decodedDomain) { return null; }
+                var target = null;
+                BRAND_DOMAINS.forEach(function (brandDomain) {
+                    if (!target && (skeleton === brandDomain || editDistance(skeleton, brandDomain) <= 1)) {
+                        target = brandDomain;
+                    }
+                });
+                if (!target) { return null; }
+                return {
+                    detail: 'The domain reads as "' + skeleton + '" once look-alike letters are ' +
+                            'mapped back, so it is imitating ' + target + '.',
+                    points: 18,
+                    cap: 8
+                };
+            }
+        },
+        {
+            id: 'free-subdomain-host',
+            about: 'The page sits on a platform that gives away a sub-domain in seconds with no ' +
+                   'questions asked. Enormous amounts of honest work is published this way, so on ' +
+                   'its own this means little - it matters when the same page also asks for a ' +
+                   'password or wears a company\'s branding.',
+            title: 'Not published on a throwaway free sub-domain',
+            failTitle: 'Published on a throwaway free sub-domain',
+            category: 'Reputation',
+            weight: 6,
+            run: function (c) {
+                var platform = INTEL.freeHost(c.host);
+                return platform
+                    ? 'The site is a free sub-domain of ' + platform + ', which anyone can claim in a minute.'
+                    : null;
+            }
+        },
+        {
+            id: 'dynamic-dns-host',
+            about: 'The name is a dynamic DNS entry, which points wherever its owner sets it and ' +
+                   'can be moved between machines at any moment. It is how you reach a computer at ' +
+                   'home, and equally how a credential page is run from a laptop that never has to ' +
+                   'be registered to anybody.',
+            title: 'Not hosted behind a dynamic DNS name',
+            failTitle: 'Hosted behind a dynamic DNS name',
+            category: 'Reputation',
+            weight: 8,
+            run: function (c) {
+                var provider = INTEL.dynamicDns(c.host);
+                return provider
+                    ? 'The host is a ' + provider + ' dynamic DNS name, so the machine behind it can change at any time.'
+                    : null;
+            }
+        },
+        {
+            id: 'credential-in-url',
+            about: 'The address carries an e-mail address, a password or a token in its query. ' +
+                   'Phishing mail puts the recipient\'s address there so the fake page can greet ' +
+                   'them by name and fill the field in for them, which makes the page look like ' +
+                   'one they have used before.',
+            title: 'No personal identifier in the address',
+            failTitle: 'Address carries a personal identifier',
+            category: 'URL',
+            weight: 8,
+            run: function (c) {
+                var query = c.url.search.toLowerCase();
+                if (!query) { return null; }
+                var carriers = ['email=', 'mail=', 'password=', 'passwd=', 'pwd=', 'token=',
+                                'session=', 'user=', 'login='];
+                var hits = countOccurrences(query, carriers);
+                var hasAddress = /%40|@/.test(query);
+                if (!hits.length || (!hasAddress && hits.indexOf('password=') === -1 && hits.indexOf('pwd=') === -1)) {
+                    return null;
+                }
+                return 'The link already knows who you are: it carries "' + hits[0] +
+                       '" in the query, which is how a phishing page greets you by name.';
+            }
+        },
+        {
+            id: 'double-extension',
+            about: 'The file name ends in two extensions, so a document icon and a familiar ' +
+                   'ending sit in front of something the computer will actually run. Windows ' +
+                   'hides the known ending by default, which is precisely the habit this trick ' +
+                   'was built around.',
+            cap: 30,
+            title: 'No disguised file extension',
+            failTitle: 'File name hides a second extension',
+            category: 'URL',
+            weight: 12,
+            run: function (c) {
+                var name = c.url.pathname.toLowerCase().split('/').pop();
+                var match = name.match(/\.(pdf|doc|docx|xls|xlsx|jpg|jpeg|png|txt|zip|mp4|inv)\.(exe|scr|bat|cmd|com|pif|vbs|js|jar|msi|ps1|lnk)$/);
+                return match
+                    ? 'The download is named "' + short(name, 40) + '": it looks like a .' + match[1] +
+                      ' but it is a .' + match[2] + ', which runs code.'
+                    : null;
+            }
+        },
+        {
+            id: 'archive-download',
+            about: 'The address points straight at an archive or a disc image. Those formats are ' +
+                   'used to wrap something up so that the browser and the mail gateway cannot look ' +
+                   'inside, and a disc image in particular carries none of the "downloaded from ' +
+                   'the internet" marking that would otherwise warn you.',
+            title: 'Not a direct archive download',
+            failTitle: 'Address is a direct archive download',
+            category: 'URL',
+            weight: 5,
+            run: function (c) {
+                var path = c.url.pathname.toLowerCase();
+                var hit = ARCHIVE_EXT.filter(function (ext) { return path.slice(-ext.length) === ext; });
+                return hit.length
+                    ? 'The link downloads a ' + hit[0] + ' archive, which hides its contents from scanners in transit.'
+                    : null;
+            }
+        },
+
+        /* ------------------------- pharming / network integrity (57 - 61) */
+        {
+            id: 'private-network-target',
+            about: 'A public web page is pointing at addresses that only exist inside a private ' +
+                   'network. That is what pharming looks like from the inside: the name in the bar ' +
+                   'is the one you typed, but the machine answering sits on your own network or ' +
+                   'behind a hijacked router rather than at the company.',
+            cap: 30,
+            title: 'No private network addresses referenced',
+            failTitle: 'Page points at private network addresses',
+            category: 'Network',
+            needsDom: true,
+            weight: 14,
+            run: function (c) {
+                if (isPrivateHost(c.host) || c.url.protocol === 'file:') { return null; }
+                var hits = [];
+                pageRefs(c).forEach(function (url) {
+                    if (hits.length < 3 && isPrivateHost(url.hostname)) { hits.push(url.hostname); }
+                });
+                if (!hits.length) { return null; }
+                return {
+                    detail: 'A public page is loading from or posting to ' + hits.join(', ') +
+                            ', an address that only exists inside a local network.',
+                    points: clamp(8 + hits.length * 3, 8, 14)
+                };
+            }
+        },
+        {
+            id: 'router-attack',
+            about: 'The page is talking to a home router\'s administration interface. A page you ' +
+                   'merely visit can send requests to the box in the corner of the room, and if it ' +
+                   'succeeds in changing the DNS servers there, every device in the house is ' +
+                   'quietly redirected from then on.',
+            title: 'No requests aimed at your router',
+            failTitle: 'Page aims requests at your router',
+            category: 'Network',
+            needsDom: true,
+            weight: 14,
+            run: function (c) {
+                var haystack = (c.html + ' ' + c.inline).toLowerCase();
+                var gateways = GATEWAY_IPS.filter(function (ip) { return haystack.indexOf(ip) !== -1; });
+                var paths = ROUTER_PATHS.filter(function (path) { return haystack.indexOf(path) !== -1; });
+                if (!gateways.length && !paths.length) { return null; }
+                if (isPrivateHost(c.host)) { return null; }     // you are on the router's own page
+                var evidence = gateways.concat(paths).slice(0, 3).join(', ');
+                return {
+                    detail: 'The page references router administration addresses (' + evidence +
+                            '), the shape of an attack that rewrites your network\'s DNS settings.',
+                    points: gateways.length && paths.length ? 14 : 9
+                };
+            }
+        },
+        {
+            id: 'dns-change-instructions',
+            contextual: true,     // wording only: skipped where the visitor writes the words
+            about: 'The page is talking you through changing DNS servers or signing into your ' +
+                   'router. Whoever answers your DNS queries decides which machine every name in ' +
+                   'your browser resolves to, so handing that over means every site you visit ' +
+                   'afterwards can be replaced without a single warning.',
+            title: 'No instructions to change your DNS or router',
+            failTitle: 'Page talks you through changing DNS settings',
+            category: 'Network',
+            needsDom: true,
+            weight: 12,
+            run: function (c) {
+                var hits = countOccurrences(c.text.toLowerCase(), DNS_CHANGE_PHRASES);
+                return hits.length
+                    ? 'The page instructs you to change network settings: "' + hits.slice(0, 2).join('", "') + '".'
+                    : null;
+            }
+        },
+        {
+            id: 'redirect-chain',
+            about: 'You did not arrive here directly - the browser was passed along a chain of ' +
+                   'addresses first. One hop is ordinary; several is how a campaign keeps its ' +
+                   'landing page alive, sending each visitor through disposable links so the one ' +
+                   'that gets reported is never the one that matters.',
+            title: 'Reached without a redirect chain',
+            failTitle: 'Reached through a chain of redirects',
+            category: 'Network',
+            needsDom: true,
+            weight: 6,
+            run: function (c) {
+                var view = c.doc.defaultView;
+                if (!view || !view.performance || !view.performance.getEntriesByType) { return null; }
+                var nav = view.performance.getEntriesByType('navigation')[0];
+                if (!nav || typeof nav.redirectCount !== 'number' || nav.redirectCount < 2) { return null; }
+                return nav.redirectCount + ' redirects happened before this page was reached.';
+            }
+        },
+        {
+            id: 'downgraded-form',
+            about: 'The page is encrypted but the form is not: what you type would be sent back ' +
+                   'over a plain connection. The padlock you can see refers only to the page that ' +
+                   'was delivered, so a form aimed at an unencrypted address undoes the protection ' +
+                   'without changing anything you would notice.',
+            cap: 35,
+            title: 'Forms keep the encrypted connection',
+            failTitle: 'Form drops out of the encrypted connection',
+            category: 'Forms',
+            needsDom: true,
+            weight: 14,
+            run: function (c) {
+                if (c.url.protocol !== 'https:') { return null; }
+                var bad = [];
+                Array.prototype.forEach.call(c.doc.querySelectorAll('form[action]'), function (form) {
+                    var target = resolveUrl(form.getAttribute('action'), c.href);
+                    if (target && target.protocol === 'http:' && bad.length < 3) { bad.push(target.host); }
+                });
+                return bad.length
+                    ? 'The padlock covers the page, not the form: it posts over plain HTTP to ' + bad.join(', ') + '.'
+                    : null;
+            }
+        },
+        {
+            id: 'form-to-ip',
+            about: 'The form sends what you type to a bare IP address. Legitimate sites post back ' +
+                   'to a named host that belongs to them and can be traced to an owner; a numeric ' +
+                   'collector belongs to whoever rented the machine this week and answers to no ' +
+                   'name at all.',
+            cap: 30,
+            title: 'Forms post to a named host',
+            failTitle: 'Form posts to a bare IP address',
+            category: 'Forms',
+            needsDom: true,
+            weight: 14,
+            run: function (c) {
+                var bad = [];
+                Array.prototype.forEach.call(c.doc.querySelectorAll('form[action]'), function (form) {
+                    var target = resolveUrl(form.getAttribute('action'), c.href);
+                    if (target && isIpHost(target.hostname) && bad.length < 3) { bad.push(target.hostname); }
+                });
+                return bad.length
+                    ? 'A form posts your data to the raw address ' + bad.join(', ') + '.'
+                    : null;
+            }
+        },
+        {
+            id: 'mailto-form',
+            about: 'The form e-mails its contents instead of submitting them to a server. It is ' +
+                   'the laziest possible collector and needs no hosting of its own, which is why ' +
+                   'so many ready-made credential pages ship this way. No real sign-in page has ' +
+                   'ever worked like this.',
+            cap: 20,
+            title: 'Forms do not e-mail your details away',
+            failTitle: 'Form e-mails your details straight to someone',
+            category: 'Forms',
+            needsDom: true,
+            weight: 16,
+            run: function (c) {
+                var found = null;
+                Array.prototype.forEach.call(c.doc.querySelectorAll('form[action]'), function (form) {
+                    var action = (form.getAttribute('action') || '').trim();
+                    if (!found && /^mailto:/i.test(action)) { found = action.slice(7).split('?')[0]; }
+                });
+                return found
+                    ? 'The form sends everything you type to ' + short(found, 40) + ' by e-mail.'
+                    : null;
+            }
+        },
+
+        /* --------------------- credential harvesting behaviour (62 - 72) */
+        {
+            id: 'credential-exfil',
+            about: 'The page\'s own scripts carry an address that collects data - a chat bot, a ' +
+                   'webhook, a form relay. Those endpoints need no server and no domain of the ' +
+                   'attacker\'s own, which is exactly why phishing kits use them, and why an ' +
+                   'ordinary login page never does.',
+            cap: 8,
+            title: 'No data-collection endpoint in the page scripts',
+            failTitle: 'Page scripts post your data to a collector',
+            category: 'Scripts',
+            needsDom: true,
+            weight: 20,
+            run: function (c) {
+                var found = INTEL.exfilEndpoints(c.inline + '\n' + c.html.slice(0, 120000));
+                if (!found.length) { return null; }
+                var high = found.some(function (item) { return item.severity === 'high'; });
+                return {
+                    detail: 'The page sends data to ' + found.map(function (f) { return f.name; }).join(', ') +
+                            ' - an anonymous collector, not a service of this site.',
+                    points: high ? 20 : 12,
+                    cap: high ? 8 : 30
+                };
+            }
+        },
+        {
+            id: 'credential-brand-mismatch',
+            about: 'The page asks for a password while presenting itself as a company that does ' +
+                   'not own this domain - in its title, its logo, or the copyright line it forgot ' +
+                   'to change. A company\'s real sign-in page is always served from that company\'s ' +
+                   'own domain, so the two can never honestly disagree.',
+            cap: 12,
+            title: 'Sign-in page matches the company that owns the domain',
+            failTitle: 'Sign-in page wears another company\'s identity',
+            category: 'Forms',
+            needsDom: true,
+            weight: 20,
+            run: function (c) {
+                if (!c.hasPassword) { return null; }
+                if (!c.claims.length) { return null; }
+                var brand = c.claims[0];
+                return {
+                    detail: 'The page presents itself as ' + brand + ' and asks for a password, but it is ' +
+                            'served from ' + (c.domain || c.host) + ', not ' + (BRAND_SITES[brand] || brand) + '.',
+                    points: 20,
+                    cap: 12
+                };
+            }
+        },
+        {
+            id: 'otp-harvest',
+            about: 'The page wants a one-time code as well as a password. A code is only worth ' +
+                   'stealing while it is valid, so a page collecting both is usually signing in as ' +
+                   'you at that very moment and passing the challenge straight through - which is ' +
+                   'how two-factor authentication gets defeated in practice.',
+            title: 'No one-time code collected alongside a password',
+            failTitle: 'Page collects a one-time code as well as a password',
+            category: 'Forms',
+            needsDom: true,
+            weight: 12,
+            run: function (c) {
+                if (!c.hasPassword) { return null; }
+                var fields = fieldsMatching(c.doc, ['otp', 'code', '2fa', 'token', 'mfa', 'pin']);
+                var wording = countOccurrences(c.text.toLowerCase(), OTP_HINTS);
+                if (!fields.length && wording.length < 2) { return null; }
+                return 'The page asks for a password and a one-time code together (' +
+                       (fields[0] || wording[0]) + '), the pattern of a live relay attack.';
+            }
+        },
+        {
+            id: 'seed-phrase-harvest',
+            contextual: true,     // wording only: skipped where the visitor writes the words
+            about: 'The page asks for a wallet\'s recovery phrase or private key. That phrase is ' +
+                   'the wallet - anyone holding it can move everything in it, immediately and ' +
+                   'irreversibly. No genuine wallet, exchange or support desk will ever ask you ' +
+                   'to type it into a web page.',
+            cap: 5,
+            title: 'Does not ask for a wallet recovery phrase',
+            failTitle: 'Page asks for your wallet recovery phrase',
+            category: 'Forms',
+            needsDom: true,
+            weight: 22,
+            run: function (c) {
+                var hits = countOccurrences(c.text.toLowerCase(), SEED_PHRASE_WORDS);
+                var fields = fieldsMatching(c.doc, ['seed', 'mnemonic', 'passphrase', 'privatekey', 'private_key', 'recovery']);
+                if (!hits.length && !fields.length) { return null; }
+                if (hits.length && !fields.length && !c.doc.querySelector('form, textarea, input')) {
+                    return null;                      // an article explaining the scam, not running one
+                }
+                return {
+                    detail: 'The page asks for "' + (hits[0] || fields[0]) + '". Whoever receives it owns the wallet outright.',
+                    points: 22,
+                    cap: 5
+                };
+            }
+        },
+        {
+            id: 'wallet-drainer',
+            about: 'The scripts connect a crypto wallet and then ask it to sign an approval rather ' +
+                   'than a payment. An approval hands a contract standing permission to move your ' +
+                   'tokens, so the transaction that empties the wallet happens later, long after ' +
+                   'the page that arranged it has been closed.',
+            cap: 10,
+            title: 'No wallet-draining calls in the page scripts',
+            failTitle: 'Page scripts ask your wallet to sign an approval',
+            category: 'Scripts',
+            needsDom: true,
+            weight: 18,
+            run: function (c) {
+                var code = (c.inline + ' ' + c.html.slice(0, 120000)).toLowerCase();
+                var hits = countOccurrences(code, DRAINER_METHODS);
+                var connects = hits.indexOf('eth_requestaccounts') !== -1 || hits.indexOf('walletconnect') !== -1;
+                var signs = hits.some(function (method) {
+                    return ['personal_sign', 'eth_signtypeddata', 'eth_sign', 'setapprovalforall',
+                            'increaseallowance', 'approve(', 'transferfrom(', 'signalltransactions',
+                            'signandsendtransaction'].indexOf(method) !== -1;
+                });
+                if (!connects || !signs) { return null; }
+                return {
+                    detail: 'The page connects a wallet and requests ' +
+                            hits.filter(function (h) { return h !== 'eth_requestaccounts'; }).slice(0, 3).join(', ') +
+                            ' - permission to move your tokens, not a purchase.',
+                    points: 18,
+                    cap: 10
+                };
+            }
+        },
+        {
+            id: 'hidden-password-field',
+            about: 'A password box is present but hidden from view. The browser\'s saved-password ' +
+                   'feature fills in fields it can find, whether or not you can see them, so an ' +
+                   'invisible one on a page that appears to ask for nothing is there to collect ' +
+                   'what your password manager offers.',
+            title: 'No hidden password fields',
+            failTitle: 'Page hides a password field',
+            category: 'Forms',
+            needsDom: true,
+            weight: 7,
+            run: function (c) {
+                /* Only deliberate hiding counts. A box with no size is usually
+                   a sign-in panel that has not been opened yet, or a page the
+                   browser has not laid out - neither is an attack, and both
+                   are far more common than one. */
+                var hidden = 0;
+                var visible = 0;
+                Array.prototype.forEach.call(c.doc.querySelectorAll('input[type="password"]'), function (input) {
+                    var style = elementStyle(c.doc, input);
+                    if (!style) { visible++; return; }
+                    var offscreen = (parseFloat(style.left) < -999) || (parseFloat(style.textIndent) < -999);
+                    if (style.display === 'none' || style.visibility === 'hidden' ||
+                        Number(style.opacity) === 0 || offscreen) {
+                        // A panel waiting to be opened is hidden the same way.
+                        var inPanel = input.closest && input.closest('dialog, [role="dialog"], [aria-modal], ' +
+                            '[hidden], [class*="modal"], [class*="drawer"], [class*="popup"], [class*="menu"]');
+                        if (!inPanel) { hidden++; }
+                    } else {
+                        visible++;
+                    }
+                });
+                // A page that openly asks for a password is not hiding one.
+                return (hidden && !visible)
+                    ? hidden + ' password field(s) are deliberately hidden on a page that does not ask for one, ' +
+                      'which is how a saved password gets collected by autofill.'
+                    : null;
+            }
+        },
+        {
+            id: 'id-document-upload',
+            contextual: true,     // wording only: skipped where the visitor writes the words
+            about: 'The page wants a photograph of an identity document, or a selfie holding one. ' +
+                   'That is the raw material for opening accounts in your name, and unlike a ' +
+                   'password it can never be changed once it has been handed over. Very few sites ' +
+                   'have any business asking.',
+            title: 'Does not ask for identity documents',
+            failTitle: 'Page asks you to upload identity documents',
+            category: 'Forms',
+            needsDom: true,
+            weight: 10,
+            run: function (c) {
+                var wording = countOccurrences(c.text.toLowerCase(), ID_DOCUMENT_WORDS);
+                if (!wording.length) { return null; }
+                var upload = c.doc.querySelector('input[type="file"]');
+                if (!upload) { return null; }
+                return 'The page asks you to upload "' + wording[0] + '", which is enough to open accounts in your name.';
+            }
+        },
+        {
+            id: 'keystroke-capture',
+            about: 'The scripts watch individual keystrokes and send them onward. A form that ' +
+                   'submits normally has no reason to read the keys one at a time, and a page that ' +
+                   'does can collect what you typed even if you think better of it and never press ' +
+                   'the button.',
+            title: 'No keystroke logging in the page scripts',
+            failTitle: 'Page scripts record what you type',
+            category: 'Scripts',
+            needsDom: true,
+            weight: 12,
+            run: function (c) {
+                var code = c.inline.toLowerCase();
+                var listens = /addeventlistener\s*\(\s*['"](keydown|keypress|keyup|input)['"]/.test(code) ||
+                              /onkeypress\s*=|onkeydown\s*=/.test(code);
+                var sends = /(fetch\s*\(|xmlhttprequest|navigator\.sendbeacon|new image\(\)\.src|websocket\s*\()/.test(code);
+                var reads = /\.value|password|input\.value/.test(code);
+                if (!(listens && sends && reads)) { return null; }
+                return 'Inline scripts listen to every keystroke and send data onward before the form is submitted.';
+            }
+        },
+        {
+            id: 'login-form-no-action',
+            about: 'The sign-in form has nowhere to submit to, so the page is handling your ' +
+                   'password in script instead. Real sign-in pages post to their own server; a form ' +
+                   'with no destination is the shape left behind when a kit takes the values ' +
+                   'itself and sends them somewhere of its choosing.',
+            title: 'Sign-in form submits to a real destination',
+            failTitle: 'Sign-in form has no real destination',
+            category: 'Forms',
+            needsDom: true,
+            weight: 8,
+            run: function (c) {
+                if (!c.hasPassword) { return null; }
+                var suspicious = false;
+                Array.prototype.forEach.call(c.doc.querySelectorAll('form'), function (form) {
+                    if (!form.querySelector('input[type="password"]')) { return; }
+                    var action = (form.getAttribute('action') || '').trim();
+                    if (action === '' || action === '#' || /^javascript:/i.test(action)) { suspicious = true; }
+                });
+                return suspicious
+                    ? 'The sign-in form has no destination of its own, so a script decides where your password goes.'
+                    : null;
+            }
+        },
+        {
+            id: 'srcdoc-credential-frame',
+            about: 'A password box is being drawn inside a frame whose contents are written into ' +
+                   'the page itself. Building the form that way keeps it out of the page source ' +
+                   'that a scanner reads, and out of the address bar the frame would otherwise ' +
+                   'have to show.',
+            title: 'No password fields inside a written-in frame',
+            failTitle: 'Password field hidden inside a written-in frame',
+            category: 'Forms',
+            needsDom: true,
+            weight: 12,
+            run: function (c) {
+                var found = false;
+                Array.prototype.forEach.call(c.doc.querySelectorAll('iframe[srcdoc]'), function (frame) {
+                    var markup = (frame.getAttribute('srcdoc') || '').toLowerCase();
+                    if (markup.indexOf('type="password"') !== -1 || markup.indexOf("type='password'") !== -1) {
+                        found = true;
+                    }
+                });
+                return found
+                    ? 'A password field is written into an inline frame, which keeps it out of the page\'s own source.'
+                    : null;
+            }
+        },
+        {
+            id: 'cloned-brand-assets',
+            about: 'Most of the images and stylesheets come from another company\'s servers. A ' +
+                   'copied page keeps its looks by linking straight back to the original\'s files ' +
+                   'rather than copying them, so the branding is genuine while everything that ' +
+                   'receives your typing is not.',
+            cap: 25,
+            title: 'Page serves its own images and styles',
+            failTitle: 'Page borrows another company\'s images and styles',
+            category: 'Content',
+            needsDom: true,
+            weight: 14,
+            run: function (c) {
+                var counts = {};
+                pageRefs(c).forEach(function (url) {
+                    var domain = registrableDomain(url.hostname);
+                    if (!domain || sameSite(url.hostname, c.host)) { return; }
+                    BRAND_DOMAINS.forEach(function (brandDomain) {
+                        if (domain === brandDomain) { counts[brandDomain] = (counts[brandDomain] || 0) + 1; }
+                    });
+                });
+                var worst = null;
+                Object.keys(counts).forEach(function (domain) {
+                    if (!worst || counts[domain] > counts[worst]) { worst = domain; }
+                });
+                if (!worst || counts[worst] < 3) { return null; }
+                return {
+                    detail: counts[worst] + ' images or scripts are loaded from ' + worst +
+                            ' while you are on ' + c.domain + ' - the signature of a copied page.',
+                    points: clamp(6 + counts[worst] * 2, 6, 14)
+                };
+            }
+        },
+
+        /* ----------------------------- deception in the interface (73 - 82) */
+        {
+            id: 'fake-address-bar',
+            about: 'The page draws its own address bar or padlock inside the page. Whatever is ' +
+                   'painted there is just a picture, and it can spell any address at all - the ' +
+                   'only address that means anything is the one in the browser\'s own frame, ' +
+                   'above the page and outside its reach.',
+            cap: 30,
+            title: 'No fake address bar drawn on the page',
+            failTitle: 'Page draws a fake address bar',
+            category: 'Content',
+            needsDom: true,
+            weight: 12,
+            run: function (c) {
+                var found = null;
+                var candidates = c.doc.querySelectorAll('[class*="url"], [class*="addressbar"], [class*="address-bar"], [id*="urlbar"], [class*="browser"]');
+                Array.prototype.forEach.call(candidates, function (node) {
+                    if (found) { return; }
+                    var text = (node.textContent || '').trim();
+                    if (text.length > 120) { return; }
+                    var match = text.match(/https?:\/\/([a-z0-9.-]+\.[a-z]{2,})/i);
+                    if (match && !sameSite(match[1], c.host)) { found = match[1]; }
+                });
+                return found
+                    ? 'The page paints an address bar showing "' + found + '" while you are on ' + c.host + '.'
+                    : null;
+            }
+        },
+        {
+            id: 'fake-security-seal',
+            contextual: true,     // wording only: skipped where the visitor writes the words
+            about: 'The page shows a security badge that is not served by the company it names. A ' +
+                   'genuine seal is an image fetched from the auditor, and clicking it proves the ' +
+                   'audit; a copied picture proves only that somebody saved a picture and put it ' +
+                   'next to the payment form.',
+            title: 'No unverifiable security badges',
+            failTitle: 'Page shows an unverifiable security badge',
+            category: 'Content',
+            needsDom: true,
+            weight: 7,
+            run: function (c) {
+                var claims = countOccurrences(c.text.toLowerCase() + ' ' + c.html.slice(0, 60000).toLowerCase(), SECURITY_SEALS);
+                if (!claims.length) { return null; }
+                var verified = pageRefs(c).some(function (url) {
+                    return SEAL_DOMAINS.indexOf(registrableDomain(url.hostname)) !== -1;
+                });
+                return verified
+                    ? null
+                    : 'The page claims "' + claims[0] + '" but the badge is not served by the company that would issue it.';
+            }
+        },
+        {
+            id: 'clickfix-clipboard',
+            contextual: true,     // wording only: skipped where the visitor writes the words
+            about: 'The page is walking you through running a command on your own computer, ' +
+                   'usually after a fake verification step, and often after quietly putting that ' +
+                   'command on your clipboard. It works because nothing is downloaded: you become ' +
+                   'the delivery mechanism, and every browser warning is bypassed.',
+            cap: 8,
+            title: 'Does not ask you to run commands yourself',
+            failTitle: 'Page talks you into running a command yourself',
+            category: 'Scripts',
+            needsDom: true,
+            weight: 20,
+            run: function (c) {
+                var text = c.text.toLowerCase();
+                var phrases = countOccurrences(text, CLICKFIX_PHRASES);
+                var clipboard = countOccurrences(c.inline.toLowerCase(), CLIPBOARD_CALLS);
+                var runners = /(powershell|cmd\.exe|mshta|curl\s+http|iwr\s+http|wscript|osascript|bash\s+-c)/i.test(text + ' ' + c.inline);
+                var score = phrases.length + (clipboard.length ? 2 : 0) + (runners ? 2 : 0);
+                if (score < 3) { return null; }
+                return {
+                    detail: 'The page instructs you to run something yourself ("' + short(phrases[0] || 'copied command', 40) +
+                            '")' + (clipboard.length ? ' and writes to your clipboard while doing it' : '') + '.',
+                    points: clamp(10 + score * 2, 10, 20),
+                    cap: score >= 5 ? 8 : 25
+                };
+            }
+        },
+        {
+            id: 'fake-captcha',
+            contextual: true,     // wording only: skipped where the visitor writes the words
+            about: 'The page dresses a permission prompt up as a human-verification step. The ' +
+                   '"Allow" you are being pointed at is the browser\'s notification prompt, not a ' +
+                   'captcha, and agreeing to it hands over the right to push adverts and fake ' +
+                   'alerts onto your desktop long after the page is gone.',
+            title: 'No fake human-verification prompt',
+            failTitle: 'Page fakes a human-verification prompt',
+            category: 'Content',
+            needsDom: true,
+            weight: 10,
+            run: function (c) {
+                var hits = countOccurrences(c.text.toLowerCase(), FAKE_CAPTCHA_PHRASES);
+                if (!hits.length) { return null; }
+                return 'The page says "' + hits[0] + '" - that is the notification prompt, not a captcha.';
+            }
+        },
+        {
+            id: 'fake-update-prompt',
+            contextual: true,     // wording only: skipped where the visitor writes the words
+            about: 'The page claims your browser, plugin or driver is out of date and offers the ' +
+                   'update itself. Browsers update themselves and never ask a web page to help; ' +
+                   'anything downloaded from a page that says otherwise is whatever the page ' +
+                   'wanted you to run.',
+            title: 'No fake update prompt',
+            failTitle: 'Page pushes a fake software update',
+            category: 'Content',
+            needsDom: true,
+            weight: 12,
+            run: function (c) {
+                var hits = countOccurrences(c.text.toLowerCase(), FAKE_UPDATE_PHRASES);
+                if (!hits.length) { return null; }
+                var offers = /download|install|update now|get the update/i.test(c.text.slice(0, 8000));
+                return {
+                    detail: 'The page claims "' + hits[0] + '"' + (offers ? ' and offers the update itself' : '') +
+                            '. Browsers update themselves and never ask a page to do it.',
+                    points: offers ? 12 : 7
+                };
+            }
+        },
+        {
+            id: 'tech-support-number',
+            contextual: true,     // wording only: skipped where the visitor writes the words
+            about: 'A support telephone number is displayed next to a warning about your computer. ' +
+                   'That combination is the whole business model of the support scam: the warning ' +
+                   'is fabricated, the number reaches the people who wrote it, and the call ends ' +
+                   'with remote access to the machine.',
+            title: 'No support number attached to an alarm',
+            failTitle: 'Support number displayed next to a scare message',
+            category: 'Content',
+            needsDom: true,
+            weight: 10,
+            run: function (c) {
+                var text = c.text.toLowerCase();
+                var alarm = countOccurrences(text, SCAREWARE_STRONG).length ||
+                            countOccurrences(text, SCAREWARE_WEAK).length >= 2;
+                if (!alarm) { return null; }
+                var callWording = /call (?:us|now|toll|support|immediately|this number)|helpline|support number/i.test(c.text);
+                var number = SUPPORT_NUMBER.test(c.text.replace(/\s+/g, ' '));
+                if (!callWording || !number) { return null; }
+                return 'A telephone number is displayed beside a warning about your device - the shape of a support scam.';
+            }
+        },
+        {
+            id: 'install-prompt',
+            about: 'The page offers something that installs rather than something that opens - an ' +
+                   'Android package, a configuration profile, a browser add-on from outside a ' +
+                   'store. Each of those grants standing access to the device, which is a very ' +
+                   'different decision from opening a document.',
+            title: 'Does not offer a direct install package',
+            failTitle: 'Page offers a direct install package',
+            category: 'Content',
+            needsDom: true,
+            weight: 10,
+            run: function (c) {
+                var found = null;
+                pageRefs(c).forEach(function (url) {
+                    if (found) { return; }
+                    var path = url.pathname.toLowerCase();
+                    INSTALL_EXT.forEach(function (ext) {
+                        if (!found && path.slice(-ext.length) === ext) { found = ext + ' from ' + url.host; }
+                    });
+                });
+                return found
+                    ? 'The page offers an install package (' + found + ') outside any app store.'
+                    : null;
+            }
+        },
+        {
+            id: 'gift-card-payment',
+            contextual: true,     // wording only: skipped where the visitor writes the words
+            about: 'The page wants payment as gift card codes. No business collects money that ' +
+                   'way; a code read out or photographed is gone the moment it is spent, cannot be ' +
+                   'traced to anybody, and cannot be reversed by the shop that sold it. It is the ' +
+                   'single clearest sign of a scam in progress.',
+            title: 'Does not ask for gift card codes',
+            failTitle: 'Page asks for payment in gift card codes',
+            category: 'Content',
+            needsDom: true,
+            weight: 12,
+            run: function (c) {
+                var hits = countOccurrences(c.text.toLowerCase(), GIFT_CARD_PHRASES);
+                return hits.length
+                    ? 'The page asks for payment as "' + hits[0] + '" - untraceable and irreversible by design.'
+                    : null;
+            }
+        },
+        {
+            id: 'giveaway-doubling',
+            contextual: true,     // wording only: skipped where the visitor writes the words
+            about: 'The page promises to send back more than you send in. The money multiplying ' +
+                   'itself is the offer, and it has never once been real; the wallet address ' +
+                   'changes, the celebrity name changes, and the arithmetic that nobody could ' +
+                   'afford to honour stays exactly the same.',
+            cap: 25,
+            title: 'No "send money, get more back" offer',
+            failTitle: 'Page promises to send back more than you send',
+            category: 'Content',
+            needsDom: true,
+            weight: 14,
+            run: function (c) {
+                var text = c.text.toLowerCase();
+                var hits = countOccurrences(text, GIVEAWAY_PHRASES);
+                var arithmetic = /send\s+[\d.]+\s*(btc|eth|bnb|sol|usdt)[^.]{0,40}(receive|get|back)\s+[\d.]+/i.test(c.text);
+                if (!hits.length && !arithmetic) { return null; }
+                return {
+                    detail: 'The page offers to return more than you send in ("' +
+                            short(hits[0] || 'send X, receive 2X', 40) + '"), which no giveaway has ever done.',
+                    points: arithmetic ? 14 : 9
+                };
+            }
+        },
+        {
+            id: 'investment-guarantee',
+            contextual: true,     // wording only: skipped where the visitor writes the words
+            about: 'Returns are described as guaranteed or fixed by the day. Investment returns ' +
+                   'cannot be guaranteed - that is what makes them investments - so the promise is ' +
+                   'not an optimistic forecast but the pitch itself, and the withdrawal that is ' +
+                   'always available never quite completes.',
+            title: 'No guaranteed-return promises',
+            failTitle: 'Page promises guaranteed investment returns',
+            category: 'Content',
+            needsDom: true,
+            weight: 9,
+            run: function (c) {
+                var hits = countOccurrences(c.text.toLowerCase(), INVESTMENT_PHRASES);
+                return hits.length >= 2
+                    ? 'The page promises "' + hits.slice(0, 2).join('", "') + '", which no honest investment can.'
+                    : null;
+            }
+        },
+        {
+            id: 'survey-prize',
+            contextual: true,     // wording only: skipped where the visitor writes the words
+            about: 'The page says you have been chosen, won something, or need only finish a short ' +
+                   'survey to collect it. The prize exists to keep you moving through the pages ' +
+                   'that follow, which is where the personal details, the card number or the ' +
+                   'subscription is actually collected.',
+            title: 'No prize or lucky-visitor claim',
+            failTitle: 'Page claims you have won something',
+            category: 'Content',
+            needsDom: true,
+            weight: 8,
+            run: function (c) {
+                var hits = countOccurrences(c.text.toLowerCase(), SURVEY_PHRASES);
+                return hits.length
+                    ? 'The page tells you "' + hits[0] + '" - the opening move of a survey or prize scam.'
+                    : null;
+            }
+        },
+        {
+            id: 'qr-payment',
+            contextual: true,     // wording only: skipped where the visitor writes the words
+            about: 'A QR code is shown next to payment or urgency wording. The code hides its ' +
+                   'destination until the phone has already opened it, and moving from the ' +
+                   'computer to a phone leaves behind whatever protection the computer had. ' +
+                   'Printed codes on letters and posters are swapped the same way.',
+            title: 'No QR code attached to a payment request',
+            failTitle: 'QR code shown next to a payment request',
+            category: 'Content',
+            needsDom: true,
+            weight: 8,
+            run: function (c) {
+                var markup = c.html.slice(0, 120000).toLowerCase();
+                var hasQr = markup.indexOf('qrcode') !== -1 || markup.indexOf('qr-code') !== -1 ||
+                            /alt="[^"]*qr[^"]*"/.test(markup);
+                if (!hasQr) { return null; }
+                var money = /(scan to pay|pay with|payment|invoice|transfer|deposit|verify your account)/i.test(c.text);
+                return money
+                    ? 'A QR code is presented alongside payment wording; the code hides where it actually leads.'
+                    : null;
+            }
+        },
+        {
+            id: 'subscription-trap',
+            contextual: true,     // wording only: skipped where the visitor writes the words
+            about: 'A recurring charge is mentioned in wording the layout keeps out of the way - ' +
+                   'small print under a button, a line far below the fold. The trial is the ' +
+                   'advertised offer and the subscription is the actual one, which is why the two ' +
+                   'are never given the same prominence.',
+            title: 'Recurring charges are not buried in small print',
+            failTitle: 'Recurring charge buried in small print',
+            category: 'Content',
+            needsDom: true,
+            weight: 7,
+            run: function (c) {
+                var recurring = /(you will be charged|automatically renew|recurring (?:charge|billing|payment)|per (?:week|month) (?:after|thereafter)|cancel any time to avoid)/i;
+                var found = null;
+                Array.prototype.forEach.call(c.doc.querySelectorAll('p, span, small, div'), function (node) {
+                    if (found || (node.textContent || '').length > 400) { return; }
+                    if (!recurring.test(node.textContent || '')) { return; }
+                    var style = elementStyle(c.doc, node);
+                    var size = style ? parseFloat(style.fontSize) : 16;
+                    if ((size && size <= 11) || node.tagName === 'SMALL') { found = short(node.textContent, 70); }
+                });
+                return found
+                    ? 'A recurring charge is disclosed only in small print: "' + found + '".'
+                    : null;
+            }
+        },
+
+        /* ------------------------------- evasion and anti-analysis (83 - 88) */
+        {
+            id: 'devtools-blocking',
+            about: 'The page tries to stop you looking at how it is built - the right-click menu, ' +
+                   'the view-source shortcut, the developer tools. An ordinary site has nothing to ' +
+                   'protect there, since everything it sent you is already on your computer; a ' +
+                   'copied sign-in page has the original\'s markup to hide.',
+            title: 'Does not block inspection of the page',
+            failTitle: 'Page blocks inspection of itself',
+            category: 'Scripts',
+            needsDom: true,
+            weight: 9,
+            run: function (c) {
+                var code = c.inline.toLowerCase().replace(/\s+/g, '');
+                var hits = DEVTOOLS_TOKENS.filter(function (token) {
+                    return code.indexOf(token.replace(/\s+/g, '')) !== -1;
+                });
+                var blocks = /preventdefault/.test(code) || /returnfalse/.test(code);
+                if (hits.length < 2 || !blocks) { return null; }
+                return 'The page suppresses right-click, view-source or developer tools (' + hits.slice(0, 3).join(', ') + ').';
+            }
+        },
+        {
+            id: 'bot-cloaking',
+            about: 'The scripts check whether the visitor is a person or an automated scanner and ' +
+                   'can serve different content to each. Showing something harmless to whoever ' +
+                   'checks the page, and the real thing to everybody else, is how a campaign stays ' +
+                   'off the block lists for as long as possible.',
+            title: 'No visitor cloaking in the page scripts',
+            failTitle: 'Page checks whether you are a real visitor',
+            category: 'Scripts',
+            needsDom: true,
+            weight: 10,
+            run: function (c) {
+                var code = c.inline.toLowerCase();
+                var hits = countOccurrences(code, CLOAKING_TOKENS);
+                if (!hits.length) { return null; }
+                var branches = /if\s*\(|\?\s*.+:/.test(code) && /(location\.(replace|href)|innerhtml|document\.write)/.test(code);
+                if (!branches) { return null; }
+                return 'The page inspects the visitor (' + hits.slice(0, 2).join(', ') +
+                       ') and changes what it shows accordingly.';
+            }
+        },
+        {
+            id: 'dynamic-script-injection',
+            about: 'Code is being assembled at run time and added to the page, often from text ' +
+                   'that was encoded to be unreadable in the source. Whatever finally runs is ' +
+                   'decided after the page has loaded, so nothing you or a scanner reads in the ' +
+                   'markup describes what the page actually does.',
+            title: 'No scripts assembled at run time',
+            failTitle: 'Page assembles its scripts at run time',
+            category: 'Scripts',
+            needsDom: true,
+            weight: 8,
+            run: function (c) {
+                var code = c.inline.toLowerCase().replace(/\s+/g, '');
+                var creates = /createelement\(['"]script['"]\)/.test(code) || /insertadjacenthtml\(/.test(code);
+                var hidden = /atob\(|fromcharcode|unescape\(|\\x6|decodeuricomponent\(/.test(code);
+                if (!creates || !hidden) { return null; }
+                return 'A script element is built at run time from encoded text, so its real source is not in the page.';
+            }
+        },
+        {
+            id: 'history-trap',
+            about: 'The page fills the browser history with copies of itself so that pressing back ' +
+                   'never gets you anywhere. Holding a visitor on the page is the point: the ' +
+                   'longer the fake warning or the countdown stays in front of somebody, the more ' +
+                   'likely they are to do what it asks.',
+            title: 'Back button works normally',
+            failTitle: 'Page traps the back button',
+            category: 'Scripts',
+            needsDom: true,
+            weight: 7,
+            run: function (c) {
+                var code = c.inline.toLowerCase().replace(/\s+/g, '');
+                var pushes = (code.match(/history\.(pushstate|replacestate)/g) || []).length;
+                var loops = /setinterval|for\(|while\(|popstate/.test(code);
+                if (pushes < 1 || !loops) { return null; }
+                return 'The page rewrites the browser history repeatedly, which stops the back button leaving.';
+            }
+        },
+        {
+            id: 'data-uri-navigation',
+            about: 'The page links to a whole document encoded inside the link itself, or to code ' +
+                   'in place of an address. What opens is written by this page rather than fetched ' +
+                   'from anywhere, so it inherits the trust of the site you are on while nobody ' +
+                   'else ever hosted or checked it.',
+            title: 'No links to inline documents or script',
+            failTitle: 'Page links to inline documents or script',
+            category: 'Content',
+            needsDom: true,
+            weight: 10,
+            run: function (c) {
+                var found = null;
+                Array.prototype.forEach.call(c.doc.querySelectorAll('a[href], iframe[src]'), function (node) {
+                    if (found) { return; }
+                    var raw = (node.getAttribute('href') || node.getAttribute('src') || '').trim().toLowerCase();
+                    if (/^data:text\/html/.test(raw)) { found = 'a document encoded into the link'; }
+                    else if (/^javascript:/.test(raw) && raw.length > 30) { found = 'script in place of an address'; }
+                });
+                return found ? 'The page contains ' + found + ', which never came from a server.' : null;
+            }
         }
     ];
+
+    /* --------------------------------------------------- attack patterns */
+
+    /*
+     * Some findings mean little apart and a great deal together. A password
+     * box is ordinary; a password box on a free sub-domain wearing a bank's
+     * logo is a phishing kit, and no single test can say so. Each pattern
+     * lists groups of findings and how many of those groups have to appear.
+     */
+    var PATTERNS = [
+        {
+            id: 'credential-kit',
+            title: 'Credential harvesting kit',
+            about: 'Three things showed up together: something collecting a password, a disposable ' +
+                   'place to host it, and somebody else\'s identity on the page. Each is explainable ' +
+                   'alone. Together they are the standard build of a phishing kit.',
+            need: 2,
+            points: 12,
+            cap: 18,
+            groups: [
+                ['insecure-password-form', 'login-form-no-action', 'cross-domain-form', 'mailto-form',
+                 'credential-exfil', 'otp-harvest', 'credential-brand-mismatch', 'form-to-ip',
+                 'downgraded-form', 'srcdoc-credential-frame', 'hidden-password-field'],
+                ['free-subdomain-host', 'dynamic-dns-host', 'suspicious-tld', 'ip-host', 'random-domain',
+                 'kit-path', 'brand-in-domain', 'many-subdomains', 'tld-in-subdomain', 'shortener',
+                 'homograph-brand', 'typosquat-brand', 'at-symbol'],
+                ['brand-impersonation', 'title-brand-mismatch', 'credential-brand-mismatch',
+                 'cloned-brand-assets', 'favicon-hotlink', 'fake-address-bar', 'brand-in-domain',
+                 'homograph-brand', 'typosquat-brand']
+            ]
+        },
+        {
+            id: 'pharming',
+            title: 'Pharming / redirected traffic',
+            about: 'The page is either pointing your browser at machines inside a private network, ' +
+                   'or working on the router that decides where every name you type resolves to. ' +
+                   'That is how traffic gets quietly sent to somebody else\'s server while the ' +
+                   'address bar still shows the name you asked for.',
+            need: 2,
+            points: 12,
+            cap: 22,
+            groups: [
+                ['private-network-target', 'router-attack', 'dns-change-instructions', 'form-to-ip'],
+                ['ip-host', 'https', 'downgraded-form', 'insecure-password-form', 'mixed-content',
+                 'nonstandard-port', 'credential-brand-mismatch', 'title-brand-mismatch']
+            ]
+        },
+        {
+            id: 'crypto-drainer',
+            title: 'Crypto wallet drainer',
+            about: 'The page combines wallet machinery with somebody else\'s branding or a promise ' +
+                   'of free money. Signing what a page like this asks for is not a payment, it is ' +
+                   'permission, and it cannot be taken back afterwards.',
+            need: 2,
+            points: 14,
+            cap: 12,
+            groups: [
+                ['seed-phrase-harvest', 'wallet-drainer', 'crypto-wallet'],
+                ['brand-impersonation', 'brand-in-domain', 'giveaway-doubling', 'title-brand-mismatch',
+                 'cloned-brand-assets', 'homograph-brand', 'typosquat-brand', 'investment-guarantee']
+            ]
+        },
+        {
+            id: 'support-scam',
+            title: 'Fake support / scareware',
+            about: 'An invented warning about your device, plus something engineered to keep you ' +
+                   'on the page or on the telephone. No web page can examine your computer, so ' +
+                   'the alarm is theatre and the number belongs to whoever wrote it.',
+            need: 2,
+            points: 10,
+            cap: 22,
+            groups: [
+                ['scareware', 'tech-support-number', 'fake-update-prompt'],
+                ['popup-traps', 'history-trap', 'permission-abuse', 'fake-captcha', 'auto-download',
+                 'full-page-iframe', 'overlay-ads']
+            ]
+        },
+        {
+            id: 'malware-delivery',
+            title: 'Malware delivery page',
+            about: 'Something on this page installs or runs, and the page also takes trouble to ' +
+                   'hide how it works. Those two together describe a delivery page rather than a ' +
+                   'download you went looking for.',
+            need: 2,
+            points: 12,
+            cap: 18,
+            groups: [
+                ['auto-download', 'executable-url', 'double-extension', 'install-prompt',
+                 'archive-download', 'clickfix-clipboard'],
+                ['obfuscated-js', 'dynamic-script-injection', 'bot-cloaking', 'devtools-blocking',
+                 'fake-update-prompt', 'data-uri-navigation', 'hidden-iframes']
+            ]
+        },
+        {
+            id: 'prize-scam',
+            title: 'Prize, giveaway or advance-fee scam',
+            about: 'The page makes an offer nobody makes - a prize, guaranteed returns, money back ' +
+                   'from money sent - and it is published somewhere disposable or gives no way to ' +
+                   'reach whoever is behind it. The offer and the anonymity go together.',
+            need: 2,
+            points: 12,
+            cap: 30,
+            groups: [
+                ['spam-phrases:high', 'survey-prize', 'giveaway-doubling', 'investment-guarantee',
+                 'gift-card-payment', 'scareware:high'],
+                ['suspicious-tld', 'free-subdomain-host', 'dynamic-dns-host', 'random-domain',
+                 'contact-info', 'https', 'brand-in-domain', 'shortener', 'hidden-text']
+            ]
+        },
+        {
+            id: 'evasive-page',
+            title: 'Page hiding how it works',
+            about: 'Packed code, run-time assembly, visitor checks, blocked developer tools: each ' +
+                   'has an innocent explanation on its own, and a page that does several at once ' +
+                   'is being built to be difficult to examine.',
+            need: 1,
+            minInGroup: 3,
+            points: 10,
+            cap: 30,
+            groups: [
+                ['obfuscated-js', 'dynamic-script-injection', 'bot-cloaking', 'devtools-blocking',
+                 'meta-refresh', 'hidden-iframes', 'encoded-chars', 'data-uri-navigation']
+            ]
+        }
+    ];
+
+    /**
+     * @param {Array} failed  check ids, or the failed entries themselves.
+     *   A group may write "spam-phrases:high" to mean that the finding has to
+     *   be a serious one - three hard-sell phrases on a shop must not stand in
+     *   for the vocabulary of an actual prize scam.
+     */
+    function matchPatterns(failed) {
+        var points = {};
+        (failed || []).forEach(function (item) {
+            if (typeof item === 'string') { points[item] = 99; }
+            else if (item && item.id) { points[item.id] = typeof item.points === 'number' ? item.points : 99; }
+        });
+        var present = function (token) {
+            var parts = token.split(':');
+            var scored = points[parts[0]];
+            if (scored === undefined) { return false; }
+            return parts[1] === 'high' ? scored >= 10 : true;
+        };
+
+        var found = [];
+        PATTERNS.forEach(function (pattern) {
+            var evidence = [];
+            var groupsHit = 0;
+            /* A finding may only answer for one group. Without that, a single
+               look-alike domain would satisfy both "a disposable host" and
+               "somebody else's identity" and invent a pattern out of one fact. */
+            var spent = [];
+            pattern.groups.forEach(function (group) {
+                var hits = group.map(function (token) { return token.split(':')[0]; })
+                    .filter(function (id, i) {
+                        return present(group[i]) && spent.indexOf(id) === -1;
+                    });
+                if (hits.length >= (pattern.minInGroup || 1)) {
+                    groupsHit++;
+                    hits.forEach(function (id) { spent.push(id); });
+                    hits.slice(0, 4).forEach(function (id) {
+                        if (evidence.indexOf(id) === -1) { evidence.push(id); }
+                    });
+                }
+            });
+            if (groupsHit >= pattern.need) {
+                var complete = groupsHit === pattern.groups.length && pattern.groups.length > 1;
+                found.push({
+                    id: pattern.id,
+                    title: pattern.title,
+                    about: pattern.about,
+                    detail: 'Recognised from ' + evidence.length + ' findings: ' + evidence.join(', ') + '.',
+                    evidence: evidence,
+                    points: complete ? pattern.points + 4 : pattern.points,
+                    cap: complete ? Math.max(5, pattern.cap - 6) : pattern.cap
+                });
+            }
+        });
+        return found;
+    }
 
     /* -------------------------------------------------------------- rating */
 
@@ -1521,6 +3308,15 @@
         return {grade: 'F', verdict: 'Likely spam / unsafe', level: 'danger'};
     }
 
+    // What to call a page the reputation layer recognised outright.
+    var THREAT_VERDICTS = {
+        phishing: 'Known phishing page',
+        malware: 'Known malware page',
+        pua: 'Known unwanted-software page',
+        blocked: 'Blocked address',
+        test: 'Security feature test page'
+    };
+
     function severityFor(points) {
         if (points >= 10) { return 'high'; }
         if (points >= 5) { return 'medium'; }
@@ -1531,7 +3327,7 @@
 
     /**
      * Analyse a page.
-     * @param {Object|string} options  URL string, or {url, document}
+     * @param {Object|string} options  URL string, or {url, document, budgetMs}
      * @returns {Object} full report
      */
     function analyze(options) {
@@ -1554,24 +3350,48 @@
                 failed: [],
                 passed: [],
                 skipped: [],
+                patterns: [],
+                blocked: false,
+                threat: null,
+                context: {kind: null, userDriven: false, reason: ''},
+                totalTests: 0,
                 analysedAt: new Date().toISOString(),
                 error: 'The address "' + href + '" could not be parsed.'
             };
         }
 
+        var host = url.hostname.toLowerCase();
+        var domain = registrableDomain(url.hostname);
+
+        /* What kind of page this is decides how much of its text belongs to
+           the site, so the question is settled before the text is read. */
+        var context = pageContext(host, domain, doc);
+        var authorship = doc ? splitAuthorship(doc, url, context.userDriven) : {site: '', user: ''};
+
         var ctx = {
             href: href,
             url: url,
-            host: url.hostname.toLowerCase(),
-            domain: registrableDomain(url.hostname),
-            decodedHost: decodeHost(url.hostname.toLowerCase()),
-            decodedDomain: registrableDomain(decodeHost(url.hostname.toLowerCase())),
+            host: host,
+            domain: domain,
+            decodedHost: decodeHost(host),
+            decodedDomain: registrableDomain(decodeHost(host)),
             doc: doc,
-            text: doc ? visibleText(doc) : ''
+            /* text is what the SITE says. Anything the visitor typed, searched
+               for, or was shown from somebody else has been taken out of it. */
+            text: authorship.site,
+            userText: authorship.user,
+            html: doc ? pageMarkup(doc) : '',
+            inline: doc ? inlineScriptSource(doc) : '',
+            intel: INTEL.lookup(url),
+            context: context
         };
+        ctx.hasPassword = !!(doc && doc.querySelector('input[type="password"]'));
+        ctx.claims = doc ? claimedBrands(ctx) : [];
 
         var results = [];
-        var penalty = 0;
+        var threatPoints = 0;
+        var hygienePoints = 0;
+        var rawPenalty = 0;
         var scoreCap = 100;
         var cappedBy = [];
 
@@ -1582,12 +3402,14 @@
         var deadline = Date.now() + budgetMs;
 
         CHECKS.forEach(function (check) {
+            var hygiene = !!HYGIENE_CHECKS[check.id];
             var entry = {
                 id: check.id,
                 title: check.title,          // replaced by failTitle when the test fails
                 about: check.about,          // plain-English explanation for the report
                 category: check.category,
                 weight: check.weight,
+                impact: hygiene ? 'hygiene' : 'threat',
                 status: 'passed',
                 points: 0,
                 detail: ''
@@ -1596,6 +3418,19 @@
             if (check.needsDom && !doc) {
                 entry.status = 'skipped';
                 entry.detail = 'Needs the page content (URL only scan).';
+                results.push(entry);
+                return;
+            }
+
+            /*
+             * The wording tests ask "what is this page claiming?". On a page
+             * where the words belong to whoever is using it - an assistant, a
+             * search results list, an inbox - that question has no meaning,
+             * so the test is skipped rather than answered wrongly.
+             */
+            if (check.contextual && ctx.context.userDriven) {
+                entry.status = 'skipped';
+                entry.detail = ctx.context.reason;
                 results.push(entry);
                 return;
             }
@@ -1629,7 +3464,8 @@
                 entry.points = points;
                 entry.detail = detail;
                 entry.severity = severityFor(points);
-                penalty += points;
+                rawPenalty += points;
+                if (hygiene) { hygienePoints += points; } else { threatPoints += points; }
                 if (cap !== undefined) {
                     entry.cap = cap;
                     cappedBy.push(check.id);
@@ -1641,32 +3477,62 @@
             results.push(entry);
         });
 
-        /*
-         * Normalising the score.
-         * A URL-only scan can only run the 16 address tests, so its penalty
-         * must be measured against the weight that was actually available -
-         * otherwise every URL would look safe simply because the page content
-         * tests were skipped. RISK_SPAN says "a page that collects 40% of the
-         * available penalty weight scores zero".
-         */
-        var available = results.reduce(function (sum, r) {
-            return r.status === 'skipped' ? sum : sum + r.weight;
-        }, 0);
-        var riskRatio = available ? penalty / available : 0;
-        var score = clamp(Math.round(100 - (riskRatio / RISK_SPAN) * 100), 0, 100);
+        var failed = results.filter(function (r) { return r.status === 'failed'; });
+        var failedIds = failed.map(function (r) { return r.id; });
+
+        /* Findings that only mean something in combination. */
+        var patterns = matchPatterns(failed);
+        var patternPoints = 0;
+        patterns.forEach(function (pattern) {
+            patternPoints += pattern.points;
+            cappedBy.push(pattern.id);
+            if (pattern.cap < scoreCap) { scoreCap = pattern.cap; }
+        });
 
         /*
-         * Some findings are close to conclusive on their own - a domain one
-         * character away from paypal.com, a mixed-alphabet host, a password
-         * box on an unencrypted page. Averaging them against 48 tests that
-         * passed would hide them, so those tests also cap the final score.
+         * Normalising the score.
+         *
+         * The penalty is measured against a fixed points budget rather than
+         * against the weight of the suite. Dividing by the suite would mean
+         * that adding a test made every existing finding count for less, so
+         * a scanner would get gentler the more it learned to look for.
+         *
+         * Nuisance findings - advertising, tracker sprawl, no contact page -
+         * share a small budget of their own. An ad-heavy newspaper should lose
+         * a few points and stay in the safe band; only genuine risk should be
+         * able to take a page out of it.
+         */
+        var reference = doc ? RISK_POINTS_PAGE : RISK_POINTS_URL;
+        var penalty = threatPoints + Math.min(hygienePoints, HYGIENE_BUDGET) + patternPoints;
+        var riskRatio = penalty / reference;
+        var score = clamp(Math.round(100 - riskRatio * 100), 0, 100);
+
+        /*
+         * Some findings are close to conclusive on their own - an address on
+         * the known-threat list, a domain one character away from paypal.com,
+         * a page asking for a wallet's recovery phrase. Averaging those
+         * against ninety tests that passed would hide them, so they also cap
+         * the final score.
          */
         var uncapped = score;
         score = Math.min(score, scoreCap);
-        var rating = ratingFor(score);
 
-        var failed = results.filter(function (r) { return r.status === 'failed'; })
-                            .sort(function (a, b) { return b.points - a.points; });
+        var rating = ratingFor(score);
+        var verdict = rating.verdict;
+        var blocked = false;
+
+        /* A reputation hit is not a matter of degree: it is a name we already
+           know, and the report should say so rather than quote a number. */
+        var identified = ctx.intel || (failedIds.indexOf('test-page-signature') !== -1
+            ? INTEL.matchPageSignature(ctx.text + ' ' + (doc ? doc.title || '' : '')) : null);
+        if (identified) {
+            blocked = true;
+            verdict = THREAT_VERDICTS[identified.kind] || 'Known threat';
+        }
+
+        var available = results.reduce(function (sum, r) {
+            return r.status === 'skipped' ? sum : sum + r.weight;
+        }, 0);
 
         return {
             url: href,
@@ -1674,19 +3540,38 @@
             domain: ctx.domain,
             score: score,
             penalty: penalty,
+            rawPenalty: rawPenalty,
+            threatPenalty: threatPoints,
+            hygienePenalty: hygienePoints,
+            patternPenalty: patternPoints,
             maxPenalty: available,
+            riskBudget: reference,
             riskRatio: Math.round(riskRatio * 1000) / 1000,
             scoreCap: scoreCap,
             cappedBy: score < uncapped ? cappedBy : [],
             rating: rating.grade,
-            verdict: rating.verdict,
+            verdict: verdict,
             level: rating.level,
+            blocked: blocked,
+            threat: identified ? {
+                kind: identified.kind,
+                label: identified.label,
+                detail: identified.detail || '',
+                source: identified.source
+            } : null,
+            context: {
+                kind: ctx.context.kind,
+                userDriven: ctx.context.userDriven,
+                reason: ctx.context.reason
+            },
+            patterns: patterns,
             isSpam: score < 60,
             checks: results,
-            failed: failed,
+            failed: failed.sort(function (a, b) { return b.points - a.points; }),
             passed: results.filter(function (r) { return r.status === 'passed'; }),
             skipped: results.filter(function (r) { return r.status === 'skipped'; }),
             totalTests: results.length,
+            intelVersion: INTEL.version,
             analysedAt: new Date().toISOString()
         };
     }
@@ -1697,7 +3582,14 @@
         ratingFor: ratingFor,
         registrableDomain: registrableDomain,
         decodeHost: decodeHost,
+        latinSkeleton: latinSkeleton,
+        pageContext: pageContext,
+        splitAuthorship: splitAuthorship,
+        matchPatterns: matchPatterns,
+        addThreatEntries: function (list) { return INTEL.addEntries(list); },
         checks: CHECKS,
-        version: '1.0.0'
+        patterns: PATTERNS,
+        intel: INTEL,
+        version: '2.0.0'
     };
 }));

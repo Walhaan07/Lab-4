@@ -1,13 +1,16 @@
 {
   "name": "verisite",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Browser extension that embeds a button showing the current URL and rates the site for spam / phishing.",
+  "description": "Browser extension that embeds a button showing the current URL and rates the site for phishing, pharming, malware and scam risk.",
   "scripts": {
-    "test": "node --test test/analyzer.test.js",
+    "test": "node --test test/*.test.js",
     "icons": "node tools/make-icons.js"
   },
   "license": "MIT",
+  "devDependencies": {
+    "jsdom": "^30.0.1"
+  },
   "engines": {
     "node": ">=18"
   }

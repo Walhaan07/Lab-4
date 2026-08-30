@@ -898,6 +898,51 @@ window.SSC_PANEL_CSS = `
 }
 .ssc-cap svg { flex: 0 0 auto; width: 14px; height: 14px; margin-top: 1px; color: var(--ssc-danger); }
 
+/* A reputation hit is not a score, it is a name. It gets the loudest block in
+   the report, above the ring, so it is read before anything else. */
+.ssc-threat {
+    display: flex;
+    gap: 9px;
+    margin: 0 0 12px;
+    padding: 12px 13px;
+    border: 1px solid color-mix(in srgb, var(--ssc-danger) 55%, transparent);
+    border-radius: var(--ssc-r-md);
+    background: var(--ssc-tint-danger);
+    color: var(--ssc-text);
+}
+.ssc-threat svg { flex: 0 0 auto; width: 17px; height: 17px; margin-top: 1px; color: var(--ssc-danger); }
+.ssc-threat__text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ssc-threat__title { font-size: 12.5px; font-weight: 650; letter-spacing: -0.01em; color: var(--ssc-danger); }
+.ssc-threat__body { font-size: 11.5px; line-height: 1.55; color: var(--ssc-text-2); }
+.ssc-threat__source { font-size: 10.5px; color: var(--ssc-text-3); }
+
+/* Why some tests did not run: the page's words belong to its visitors. */
+.ssc-note {
+    display: flex;
+    gap: 8px;
+    margin: 10px 0 0;
+    padding: 9px 11px;
+    border: 1px solid var(--ssc-border);
+    border-radius: var(--ssc-r-sm);
+    background: var(--ssc-surface-2);
+    color: var(--ssc-text-2);
+    font-size: 11px;
+    line-height: 1.5;
+}
+.ssc-note svg { flex: 0 0 auto; width: 13px; height: 13px; margin-top: 1px; color: var(--ssc-text-3); }
+
+/* Findings that only mean something together. */
+.ssc-pattern {
+    margin: 0 0 6px;
+    padding: 10px 11px;
+    border: 1px solid color-mix(in srgb, var(--ssc-danger) 26%, transparent);
+    border-radius: var(--ssc-r-sm);
+    background: var(--ssc-tint-danger);
+}
+.ssc-pattern__title { display: block; font-size: 11.5px; font-weight: 640; color: var(--ssc-text); }
+.ssc-pattern__body { display: block; margin-top: 3px; font-size: 11px; line-height: 1.5; color: var(--ssc-text-2); }
+.ssc-pattern__evidence { display: block; margin-top: 4px; font-size: 10.5px; color: var(--ssc-text-3); }
+
 /* ========================================================= 5. findings */
 
 .ssc-section { margin-top: 18px; }

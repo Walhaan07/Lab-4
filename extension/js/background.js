@@ -76,13 +76,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 function paintBadge(tabId, report) {
     const colour = BADGE_COLOURS[report.level] || '#64748b';
+    /* An address the reputation layer recognised is not reported as a grade.
+       "F" reads as a bad mark; "!" reads as stop, which is the intention. */
+    const text = report.blocked ? '!' : report.rating;
+    const title = report.blocked
+        ? `VeriSite\n${report.verdict}\n${report.threat ? report.threat.label : ''}`
+        : `VeriSite\n${report.verdict} - score ${report.score}/100`;
+
     // The tab can disappear between the scan and the badge update.
-    chrome.action.setBadgeText({tabId, text: report.rating}).catch(() => {});
+    chrome.action.setBadgeText({tabId, text}).catch(() => {});
     chrome.action.setBadgeBackgroundColor({tabId, color: colour}).catch(() => {});
-    chrome.action.setTitle({
-        tabId,
-        title: `VeriSite\n${report.verdict} - score ${report.score}/100`
-    }).catch(() => {});
+    chrome.action.setTitle({tabId, title: title.trim()}).catch(() => {});
 }
 
 /* A new page in the tab invalidates the old rating. */

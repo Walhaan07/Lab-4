@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Assistant - conversation</title>
+    <style>
+        body { margin: 0; background: #f7f8fb; color: #101828;
+               font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+        .banner { background: #1f2937; color: #fff; padding: 11px 16px; font-size: 14px; }
+        .wrap { width: min(760px, 100% - 40px); margin-inline: auto; padding: 26px 0 120px; }
+        .msg { padding: 14px 16px; border-radius: 14px; margin: 0 0 14px; border: 1px solid #e3e8ef; background: #fff; }
+        .msg[data-message-author-role="user"] { background: #eef2ff; border-color: #dbe2fb; }
+        .who { display: block; font-size: 12px; color: #667085; margin-bottom: 4px; }
+        .composer { position: fixed; inset: auto 0 0 0; background: #fff; border-top: 1px solid #e3e8ef; padding: 14px; }
+        textarea { width: min(740px, 100% - 28px); display: block; margin-inline: auto; height: 54px;
+                   padding: 10px; border: 1px solid #d0d5dd; border-radius: 12px; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+<div class="banner">TEST PAGE - a mock assistant transcript full of scam vocabulary that the visitor asked about.
+    Expected rating: A. The wording tests stand down here: the words are the visitor's, not the site's.</div>
+
+<div class="wrap">
+    <div class="conversation" role="log">
+        <div class="msg" data-message-author-role="user">
+            <span class="who">You</span>
+            show me some scam congratulations giveaway website examples
+        </div>
+        <div class="msg" data-message-author-role="assistant">
+            <span class="who">Assistant</span>
+            Common examples read like this: "Congratulations, you have won a free gift card - claim your prize now."
+            Crypto giveaway pages promise to double your money: send 0.5 BTC receive 1 BTC. Support scams say
+            your computer is infected and tell you to call support now. Others push a limited time offer with
+            free money, guaranteed income and a countdown, or ask for a gift card code as payment.
+        </div>
+        <div class="msg" data-message-author-role="user">
+            <span class="who">You</span>
+            what about "you have been selected" survey pages and seed phrase requests?
+        </div>
+        <div class="msg" data-message-author-role="assistant">
+            <span class="who">Assistant</span>
+            Those are the same family: a prize page collects details, and a wallet page asks for your
+            secret recovery phrase, which no real wallet ever does.
+        </div>
+    </div>
+</div>
+
+<div class="composer">
+    <textarea placeholder="Message the assistant"></textarea>
+</div>
+</body>
+</html>

