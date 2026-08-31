@@ -142,8 +142,24 @@ because many sites pin their own bar down there.
 * **You can drag it anywhere.** Press and drag the button to any corner; the position is
   remembered for next time and always wins over the automatic placement. A press that moves
   less than 4px still counts as a click, so dragging never opens the report by accident.
-* **The report follows.** It normally opens above the button, and flips below or to the right
-  if the button has been dragged near the top or the left edge, so it always stays on screen.
+* **It opens whichever way there is room.** The pill normally grows leftwards from its anchor,
+  with the minimise control on its inner side. Dragged to the left of the window that would open
+  it straight off the screen, so the whole dock mirrors: the control travels round the pill —
+  along the arc it would trace if it were rolling round it, rather than jumping across — the
+  chevron turns to point the new way, and the pill then opens to the right. The same decision is
+  taken again on every drag, every window resize and every time it is opened, and it is taken
+  from the room actually available rather than from which half of the screen it is in, with the
+  current side keeping its place while it still fits so nothing flaps about mid-drag.
+* **It never outgrows its space.** The pill's width is capped to the room beside it, so a long
+  address is truncated rather than pushed off the edge — on a 360px phone-width window the pill,
+  the control and the report all still fit.
+* **The report follows.** It opens on the same side as the pill so the two read as one object,
+  above it or below it depending on where the button sits, and is then pulled back inside the
+  window if neither side has room for its full width. Its height is capped to the space actually
+  available, so it can never overflow however far the button has been dragged.
+* **All of that is verified in a real browser**, not asserted on paper: `npm run ui-check` parks
+  the button in every corner, at three window sizes, opens and closes the report at each, and
+  fails if any part of the interface ends up outside the window (see section 6).
 
 ## 4. Part 2 — the spam test and the safety rating
 
@@ -553,7 +569,8 @@ Requires Node.js 18+; the extension itself needs nothing installed.
 
 ```bash
 npm install       # optional: installs jsdom, which enables the page tests
-npm test          # 71 tests
+npm test          # 74 tests
+npm run ui-check  # optional: drives the interface in a real browser
 ```
 
 - `analyzer.test.js` — rating bands, individual detectors, score caps, the punycode decoder,
@@ -569,6 +586,12 @@ npm test          # 71 tests
   exchange warning that is not a request, an article that is not the attack it describes, and an
   ad-heavy newspaper that is not a scam. Each of those has its opposite number asserted in the
   same test, so precision cannot be bought by simply detecting less.
+- `npm run ui-check` — a separate script, because geometry is the one thing the unit tests
+  cannot see: jsdom has no layout, so *"does the report open off the side of the screen?"* can
+  only be answered by a browser. It drives the real interface in Chromium through **Playwright**
+  (also optional — without it the script says so and exits cleanly) and checks that the dock,
+  the toggle, the pill and the report all stay inside the window in every corner and at window
+  sizes down to 360×640.
 
 ## 7. Limitations
 
@@ -587,6 +610,10 @@ anywhere, which is a deliberate privacy choice and also the limit of what it can
   visitors are recognised — but a determined page that looks entirely ordinary will still pass.
 - **It reads the page, not the network.** It cannot inspect the TLS certificate chain, resolve a
   name to see where it really points, or watch what a script does after the scan.
+- **A page it cannot read is a page it cannot judge.** Every test is run inside a guard, and so
+  is the reading of the page itself, so a document that is detached, torn down mid-navigation or
+  simply hostile degrades to an address-only scan rather than taking the whole scan down. The
+  address tests still have plenty to say, but the page tests are reported as skipped, not passed.
 
 It is a demonstration of the technique, and a good one to reason with, but it is not a
 replacement for the protection built into the browser.

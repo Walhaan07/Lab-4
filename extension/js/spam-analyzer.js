@@ -3569,10 +3569,30 @@
         var host = url.hostname.toLowerCase();
         var domain = registrableDomain(url.hostname);
 
-        /* What kind of page this is decides how much of its text belongs to
-           the site, so the question is settled before the text is read. */
-        var context = pageContext(host, domain, doc);
-        var authorship = doc ? splitAuthorship(doc, url, context.userDriven) : {site: '', user: ''};
+        /*
+         * Reading the page happens before any test runs, and a document that
+         * cannot be read - detached, torn down mid-navigation, replaced by
+         * something that throws - must not take the whole scan with it. The
+         * address tests can still say plenty on their own, so a page that
+         * cannot be read is treated as a scan without one.
+         */
+        var context = {kind: null, userDriven: false, reason: ''};
+        var authorship = {site: '', user: ''};
+        var markup = '';
+        var scripts = '';
+        try {
+            /* What kind of page this is decides how much of its text belongs
+               to the site, so the question is settled before the text is read. */
+            context = pageContext(host, domain, doc);
+            if (doc) {
+                authorship = splitAuthorship(doc, url, context.userDriven);
+                markup = pageMarkup(doc);
+                scripts = inlineScriptSource(doc);
+            }
+        } catch (e) {
+            doc = null;
+            options = {url: href};
+        }
 
         var ctx = {
             href: href,
@@ -3586,17 +3606,23 @@
                for, or was shown from somebody else has been taken out of it. */
             text: authorship.site,
             userText: authorship.user,
-            html: doc ? pageMarkup(doc) : '',
-            inline: doc ? inlineScriptSource(doc) : '',
+            html: markup,
+            inline: scripts,
             intel: INTEL.lookup(url),
             context: context
         };
-        ctx.hasPassword = !!(doc && doc.querySelector('input[type="password"]'));
-        ctx.claims = doc ? claimedBrands(ctx) : [];
-        /* Read once, and never on a page whose words belong to its visitors:
-           quoting a test page into a chat window is not being one. */
-        ctx.signature = (doc && !context.userDriven)
-            ? INTEL.matchPageSignature(ctx.text + ' ' + (doc.title || '')) : null;
+        try {
+            ctx.hasPassword = !!(doc && doc.querySelector('input[type="password"]'));
+            ctx.claims = doc ? claimedBrands(ctx) : [];
+            /* Read once, and never on a page whose words belong to its
+               visitors: quoting a test page into a chat window is not being one. */
+            ctx.signature = (doc && !context.userDriven)
+                ? INTEL.matchPageSignature(ctx.text + ' ' + (doc.title || '')) : null;
+        } catch (e) {
+            ctx.hasPassword = false;
+            ctx.claims = [];
+            ctx.signature = null;
+        }
 
         var results = [];
         var threatPoints = 0;

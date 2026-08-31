@@ -30,7 +30,12 @@
     var position = {right: DEFAULT_POSITION.right, bottom: DEFAULT_POSITION.bottom};
     var positionIsUserChosen = false;   // a dragged position always wins
     var collapsed = false;              // pill shown as a circle
+    var side = 'right';                 // which way the pill grows from its anchor
     var morphTimer = null;
+    var morphDelay = null;              // an opening waiting for the toggle to arrive
+    var orbit = null;                   // the toggle's trip around the pill
+    var EDGE = 10;                      // closest the UI comes to a window edge
+    var DOCK_GAP = 7;                   // matches the dock's CSS gap
 
     /* ------------------------------------------------------------- helpers */
 
@@ -212,6 +217,156 @@
                 togglePanel();
             }
         });
+    }
+
+    /* ----------------------------------------------------------- which side */
+
+    /*
+     * The whole UI hangs off a zero-sized anchor. Everything to do with which
+     * way it opens comes down to one question: is there room between that
+     * anchor and the edge of the window for what is about to appear?
+     */
+
+    function anchorX() {
+        return window.innerWidth - position.right;
+    }
+
+    function reducedMotion() {
+        try {
+            return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    /** Room between the anchor and the window edge, on either side. */
+    function roomOn(which, x) {
+        if (x === undefined) { x = anchorX(); }
+        return Math.max(0, (which === 'right' ? x : window.innerWidth - x) - EDGE);
+    }
+
+    /**
+     * Which way should something `width` wide open?
+     *
+     * The current side wins whenever it still fits, so the pill does not flap
+     * from side to side while it is being dragged past the middle of a window.
+     */
+    function preferredSide(width, x) {
+        if (roomOn(side, x) >= width) { return side; }
+        if (roomOn('right', x) >= width) { return 'right'; }
+        if (roomOn('left', x) >= width) { return 'left'; }
+        return roomOn('left', x) > roomOn('right', x) ? 'left' : 'right';
+    }
+
+    /* The pill never grows past the room it has, however long the address is. */
+    function applyRoomLimit() {
+        var toggle = elements.toggle.offsetWidth || 24;
+        var room = roomOn(side) - toggle - DOCK_GAP;
+        elements.button.style.maxWidth = Math.max(120, Math.min(460, Math.round(room))) + 'px';
+    }
+
+    /* The chevrons point the way the pill will move when the toggle is pressed. */
+    function updateToggleIcon() {
+        var flipped = (side === 'right') === collapsed;
+        elements.toggle.classList.toggle('ssc-dock__toggle--flipped', flipped);
+        elements.toggle.title = collapsed ? 'Show the full address' : 'Minimise to a circle';
+        elements.toggle.setAttribute('aria-label', elements.toggle.title);
+    }
+
+    /*
+     * Moves the toggle round to the other side of the pill along the arc it
+     * would trace if it were rolling around it, rather than jumping across.
+     * The chevron inside turns at the same time under its own transition, so
+     * the control arrives already pointing the new way.
+     */
+    function orbitToggle(from, to) {
+        var toggle = elements.toggle;
+        var dx = from.left - to.left;
+        var dy = from.top - to.top;
+        if (!Math.round(dx) && !Math.round(dy)) { return 0; }
+        if (reducedMotion() || typeof toggle.animate !== 'function') { return 0; }
+
+        var radius = Math.abs(dx) / 2;
+        var lift = Math.max(radius, 14);
+        var direction = dx >= 0 ? 1 : -1;
+        var centre = dx / 2;
+        var frames = [];
+        var steps = 18;
+
+        for (var i = 0; i <= steps; i++) {
+            var t = i / steps;
+            var angle = Math.PI * t;                     // 0 at the old side, PI at the new
+            frames.push({
+                transform: 'translate(' +
+                    (centre + direction * radius * Math.cos(angle)).toFixed(2) + 'px, ' +
+                    (dy * (1 - t) - lift * Math.sin(angle)).toFixed(2) + 'px)'
+            });
+        }
+
+        var duration = 380;
+        if (orbit) { orbit.cancel(); }
+        toggle.classList.add('ssc-dock__toggle--orbiting');
+        orbit = toggle.animate(frames, {
+            duration: duration,
+            easing: 'cubic-bezier(.32, .72, 0, 1)',
+            fill: 'none'
+        });
+        /* Cancelling fires asynchronously, so a second flip started while the
+           first was still running would otherwise have the old animation's
+           handler tidy up after the new one. */
+        var mine = orbit;
+        mine.onfinish = mine.oncancel = function () {
+            if (orbit !== mine) { return; }
+            toggle.classList.remove('ssc-dock__toggle--orbiting');
+            orbit = null;
+        };
+        return duration;
+    }
+
+    /**
+     * Move the dock to the other side of its anchor.
+     * @returns {number} how long the move takes, so a caller can wait for it
+     */
+    function setSide(next, animate) {
+        if (next === side) { applyRoomLimit(); return 0; }
+
+        var before = elements.toggle.getBoundingClientRect();
+        side = next;
+        elements.dock.classList.toggle('ssc-dock--left', side === 'left');
+        applyRoomLimit();
+        updateToggleIcon();
+        var after = elements.toggle.getBoundingClientRect();
+
+        var duration = animate === false ? 0 : orbitToggle(before, after);
+        if (!elements.panel.hidden) { placePanel(); }
+        return duration;
+    }
+
+    /* Keeps the anchor far enough from the edges that the dock stays whole. */
+    function limitsFor(dock) {
+        var width = dock ? dock.width : elements.dock.offsetWidth;
+        var height = dock ? dock.height : elements.dock.offsetHeight;
+        // Anchored from the right edge: a bigger `right` moves it left.
+        var low = side === 'left' ? Math.round(width) + EDGE : EDGE;
+        var high = side === 'left'
+            ? window.innerWidth - EDGE
+            : window.innerWidth - Math.round(width) - EDGE;
+        return {
+            right: [Math.min(low, Math.max(EDGE, high)), Math.max(EDGE, high)],
+            bottom: [EDGE, Math.max(EDGE, window.innerHeight - Math.round(height) - EDGE)]
+        };
+    }
+
+    /** Puts the dock back inside the window after a drag, resize or restore. */
+    function settleInsideWindow() {
+        var dock = elements.dock.getBoundingClientRect();
+        setSide(preferredSide(dock.width), false);
+        var limits = limitsFor(dock);
+        setPosition({
+            right: clamp(position.right, limits.right[0], limits.right[1]),
+            bottom: clamp(position.bottom, limits.bottom[0], limits.bottom[1])
+        });
+        applyRoomLimit();
     }
 
     /* ------------------------------------------------------------ analysis */
@@ -615,6 +770,8 @@
         panel.style.maxHeight = '';
         panel.style.top = '';
         panel.style.bottom = '';
+        panel.style.left = '';
+        panel.style.right = '';
 
         var MARGIN = 12;                // breathing room against the window edge
         var anchor = elements.host.getBoundingClientRect();   // zero-sized corner
@@ -631,16 +788,11 @@
         var width = panel.offsetWidth || 384;
         var height = panel.offsetHeight || 420;
 
+        /* ---- above or below ---- */
         var roomAbove = (anchor.bottom - gap) - MARGIN;
         var roomBelow = window.innerHeight - (anchor.top + gap) - MARGIN;
         var openBelow = roomAbove < height && roomBelow > roomAbove;
         panel.classList.toggle('ssc-panel--below', openBelow);
-
-        // The panel hangs to the left of the anchor unless there is no room.
-        var roomLeft = anchor.left;
-        var roomRight = window.innerWidth - anchor.right;
-        panel.classList.toggle('ssc-panel--left',
-            roomLeft < width + MARGIN && roomRight > roomLeft);
 
         if (openBelow) {
             panel.style.top = gap + 'px';
@@ -653,6 +805,20 @@
         var room = openBelow ? roomBelow : roomAbove;
         var ceiling = Math.min(640, window.innerHeight - 24);
         panel.style.maxHeight = Math.round(clamp(room, Math.min(200, ceiling), ceiling)) + 'px';
+
+        /*
+         * ---- which side ----
+         * The report opens the same way the pill does, so the two read as one
+         * object. Then it is pulled back inside the window: on a narrow screen
+         * neither side has room for a 384px panel, and "flip it" would only
+         * move the overflow from one edge to the other.
+         */
+        var wanted = side === 'left' ? anchor.left : anchor.right - width;
+        var left = clamp(wanted, MARGIN, Math.max(MARGIN, window.innerWidth - width - MARGIN));
+        panel.classList.toggle('ssc-panel--left', side === 'left');
+        panel.classList.add('ssc-panel--pinned');
+        panel.style.left = Math.round(left - anchor.left) + 'px';
+        panel.style.right = 'auto';
 
         setPanelOrigin();
     }
@@ -741,32 +907,53 @@
      * cannot interpolate from a content-driven size to a fixed one - the
      * element would simply jump.
      */
-    function morphButton(toMini) {
+    /**
+     * What size would the pill be in the other shape?
+     *
+     * Measured with the target class applied and every transition in the
+     * subtree switched off, then put straight back. The label folds with its
+     * own max-width transition, so measuring while that was still running
+     * reported the collapsed width for an expand and the pill snapped at the
+     * end instead of arriving.
+     *
+     * @param {boolean} mini     the shape to measure
+     * @param {boolean} natural  ignore the room limit, to ask how wide it wants to be
+     */
+    function measureButton(mini, natural) {
         var button = elements.button;
-        var start = button.getBoundingClientRect();
+        var wasMini = button.classList.contains('ssc-button--mini');
+        var width = button.style.width;
+        var height = button.style.height;
+        var limit = button.style.maxWidth;
 
-        /*
-         * Measure the target with the final class applied and every transition
-         * in the subtree switched off, then put it back before animating. The
-         * label folds with its own max-width transition, so measuring while
-         * that was still running reported the collapsed width for an expand
-         * and the pill snapped at the end instead of arriving.
-         */
         button.classList.add('ssc-measuring');
-        button.classList.toggle('ssc-button--mini', toMini);
+        button.classList.toggle('ssc-button--mini', mini);
         /* Clear the inline size rather than setting it to auto: the circle
            takes its 46px from the stylesheet, and "auto" overrode that, so the
            morph was aiming at the content width - about 11px - and only
            reached 46 afterwards when the inline value was dropped. */
         button.style.width = '';
         button.style.height = '';
-        var end = button.getBoundingClientRect();
+        if (natural) { button.style.maxWidth = '460px'; }
+        var box = button.getBoundingClientRect();
 
-        button.classList.toggle('ssc-button--mini', !toMini);   // back to the start state
+        button.classList.toggle('ssc-button--mini', wasMini);
+        button.style.width = width;
+        button.style.height = height;
+        button.style.maxWidth = limit;
+        void button.offsetWidth;                                 // flush
+        button.classList.remove('ssc-measuring');
+        return {width: box.width, height: box.height};
+    }
+
+    function morphButton(toMini) {
+        var button = elements.button;
+        var start = button.getBoundingClientRect();
+        var end = measureButton(toMini);
+
         button.style.width = start.width + 'px';
         button.style.height = start.height + 'px';
         void button.offsetWidth;                                 // flush
-        button.classList.remove('ssc-measuring');
 
         /*
          * The spring is only used for growth. Overshooting a shrink means
@@ -800,14 +987,37 @@
 
     function setCollapsed(next, save, instant) {
         collapsed = !!next;
+
+        /*
+         * Opening needs room. Ask how wide the pill wants to be, and if the
+         * side it is parked on cannot hold it, send the toggle round the arc
+         * to the other side first - then the pill opens into the window
+         * instead of off the edge of it. The two overlap slightly, so it reads
+         * as one movement rather than two.
+         */
+        window.clearTimeout(morphDelay);
+        morphDelay = null;
+
+        var travel = 0;
+        if (!collapsed && !instant) {
+            var wanted = measureButton(false, true).width +
+                         (elements.toggle.offsetWidth || 24) + DOCK_GAP;
+            travel = setSide(preferredSide(wanted), true);
+        }
+        applyRoomLimit();
+        updateToggleIcon();
+
         if (instant) {
             elements.button.classList.toggle('ssc-button--mini', collapsed);
+        } else if (travel) {
+            var shape = collapsed;
+            morphDelay = window.setTimeout(function () {
+                morphDelay = null;
+                morphButton(shape);
+            }, Math.round(travel * 0.55));
         } else {
             morphButton(collapsed);
         }
-        elements.toggle.classList.toggle('ssc-dock__toggle--flipped', collapsed);
-        elements.toggle.title = collapsed ? 'Show the full address' : 'Minimise to a circle';
-        elements.toggle.setAttribute('aria-label', elements.toggle.title);
         updateLabel();
 
         /* Minimising takes the whole thing down to the circle, report
@@ -924,12 +1134,24 @@
             button.classList.add('ssc-button--dragging');
             hidePanel();
 
-            // The dock is measured, not the pill: the collapse toggle sits to
-            // the left of it and would otherwise be pushed off the edge.
-            var size = elements.dock.getBoundingClientRect();
-            var right = clamp(start.right - dx, 8, Math.max(8, window.innerWidth - size.width - 8));
-            var bottom = clamp(start.bottom - dy, 8, Math.max(8, window.innerHeight - size.height - 8));
-            setPosition({right: right, bottom: bottom});
+            /*
+             * The dock is measured, not the pill: the toggle sits beside it
+             * and would otherwise be pushed off the edge.
+             *
+             * The side is settled before the position is clamped, because the
+             * two answers depend on each other - which way the dock grows
+             * decides how close to an edge the anchor may go.
+             */
+            var dock = elements.dock.getBoundingClientRect();
+            var wanted = preferredSide(dock.width, window.innerWidth - (start.right - dx));
+            if (wanted !== side) { setSide(wanted, true); }
+
+            var limits = limitsFor(elements.dock.getBoundingClientRect());
+            setPosition({
+                right: clamp(start.right - dx, limits.right[0], limits.right[1]),
+                bottom: clamp(start.bottom - dy, limits.bottom[0], limits.bottom[1])
+            });
+            applyRoomLimit();
         });
 
         var finish = function (event) {
@@ -954,11 +1176,7 @@
 
         // Keep the button on screen when the window is resized.
         window.addEventListener('resize', function () {
-            var size = elements.dock.getBoundingClientRect();
-            setPosition({
-                right: clamp(position.right, 8, Math.max(8, window.innerWidth - size.width - 8)),
-                bottom: clamp(position.bottom, 8, Math.max(8, window.innerHeight - size.height - 8))
-            });
+            settleInsideWindow();
             avoidBottomBar();
             if (!elements.panel.hidden) { placePanel(); }
         });
@@ -991,11 +1209,8 @@
                     return;
                 }
                 positionIsUserChosen = true;
-                var size = elements.dock.getBoundingClientRect();
-                setPosition({
-                    right: clamp(saved.right, 8, Math.max(8, window.innerWidth - size.width - 8)),
-                    bottom: clamp(saved.bottom, 8, Math.max(8, window.innerHeight - size.height - 8))
-                });
+                setPosition({right: saved.right, bottom: saved.bottom});
+                settleInsideWindow();     // the window may be a different size now
             });
         } catch (e) { /* storage unavailable - keep the default corner */ }
     }
@@ -1112,6 +1327,7 @@
     function start() {
         buildUi();
         makeDraggable();
+        settleInsideWindow();       // decides the opening side for the default corner
         restorePosition();
         restoreCollapsed();
         /* Bars that appear a moment after load (cookie notices, chat widgets)

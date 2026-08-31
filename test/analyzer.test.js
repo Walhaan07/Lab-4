@@ -187,3 +187,42 @@ test('score always stays within 0..100', () => {
         assert.ok(report.score >= 0 && report.score <= 100, `score out of range for ${url}`);
     });
 });
+
+/* ------------------------------------------------- robustness (v3) */
+
+test('a document that cannot be read is treated as a scan without one', () => {
+    // Detached, torn down mid-navigation, or simply hostile: reading the page
+    // must never take the whole scan with it.
+    const hostile = {
+        get title() { throw new Error('no'); },
+        get body() { throw new Error('no'); },
+        querySelector() { throw new Error('no'); },
+        querySelectorAll() { throw new Error('no'); }
+    };
+    const report = SpamAnalyzer.analyze({url: 'https://example.com/', document: hostile});
+    assert.strictEqual(report.score, 100);
+    assert.ok(report.skipped.length > 0, 'the page tests should be skipped');
+
+    // and the address tests still do their work
+    const bad = SpamAnalyzer.analyze({url: 'https://paypal-verify-account.tk/login', document: hostile});
+    assert.strictEqual(bad.rating, 'F');
+    assert.ok(bad.failed.map((c) => c.id).includes('brand-in-domain'));
+});
+
+test('the same page scanned twice gives the same answer', () => {
+    // The analyser keeps no state between runs; a second opinion that differed
+    // from the first would mean it does.
+    const url = 'https://paypal.com.secure-verify.tk/webscr?cmd=login';
+    const first = SpamAnalyzer.analyze(url);
+    const second = SpamAnalyzer.analyze(url);
+    assert.strictEqual(first.score, second.score);
+    assert.deepStrictEqual(first.failed.map((c) => c.id), second.failed.map((c) => c.id));
+    assert.deepStrictEqual(first.patterns.map((p) => p.id), second.patterns.map((p) => p.id));
+});
+
+test('every check reports a category the report can group by', () => {
+    const known = ['Transport', 'URL', 'Forms', 'Content', 'Scripts', 'Downloads', 'Reputation', 'Network'];
+    SpamAnalyzer.checks.forEach((check) => {
+        assert.ok(known.includes(check.category), `${check.id} has category "${check.category}"`);
+    });
+});

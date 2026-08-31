@@ -249,6 +249,23 @@ window.SSC_PANEL_CSS = `
     gap: 7px;
 }
 
+/*
+ * Parked against the left edge, the dock mirrors: it grows to the right,
+ * towards the middle of the window instead of off the side of it, and the
+ * toggle moves round to the outside where it is still reachable. Which side
+ * is in use is decided from the room actually available, so the pill opens
+ * the way there is space to open.
+ */
+.ssc-dock--left {
+    right: auto;
+    left: 0;
+    flex-direction: row-reverse;
+}
+
+/* While it travels round the pill it is fully opaque, otherwise the motion
+   happens at 55% and reads as a smudge rather than a control moving. */
+.ssc-dock__toggle--orbiting { opacity: 1; }
+
 .ssc-dock__toggle {
     display: inline-flex;
     align-items: center;
@@ -566,6 +583,10 @@ window.SSC_PANEL_CSS = `
 
 .ssc-panel--left  { right: auto; left: 0; transform-origin: bottom left; }
 .ssc-panel--below.ssc-panel--left { transform-origin: top left; }
+
+/* Where there is not room for the panel on either side of the button, script
+   sets an explicit offset instead, so it is always fully on screen. */
+.ssc-panel--pinned { right: auto; }
 
 /*
  * The origin is set from script to the middle of the button, so these two
