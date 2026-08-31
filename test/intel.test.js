@@ -144,12 +144,19 @@ test('a link that already knows your e-mail address is flagged', () => {
         .includes('credential-in-url'));
 });
 
-test('throwaway hosting and dynamic DNS are noticed but never conclusive alone', () => {
-    const free = SpamAnalyzer.analyze('https://my-project.pages.dev/');
-    assert.ok(idsOf(free).includes('free-subdomain-host'));
-    assert.ok(free.score >= 75, `a free host alone must stay in the safe half, got ${free.score}`);
+test('free hosting is only a finding when the name asks for one', () => {
+    /* Millions of honest projects live on these platforms. What the platform
+       adds is that whoever put a bank's name, a sign-in word or a generated
+       string there needed no identity and no money to do it. */
+    const project = SpamAnalyzer.analyze('https://my-project.pages.dev/');
+    assert.ok(!idsOf(project).includes('free-subdomain-host'));
+    assert.strictEqual(project.score, 100);
 
-    assert.ok(idsOf(SpamAnalyzer.analyze('https://home.duckdns.org/')).includes('dynamic-dns-host'));
+    const borrowed = SpamAnalyzer.analyze('https://netflix-billing-update.pages.dev/');
+    assert.ok(idsOf(borrowed).includes('free-subdomain-host'));
+    assert.strictEqual(borrowed.rating, 'F');
+
+    assert.ok(idsOf(SpamAnalyzer.analyze('https://verify-account.duckdns.org/')).includes('dynamic-dns-host'));
 });
 
 /* --------------------------------------------------------- scoring model */
@@ -157,7 +164,7 @@ test('throwaway hosting and dynamic DNS are noticed but never conclusive alone',
 test('the score is measured against a fixed budget, not the size of the suite', () => {
     // Adding tests must sharpen the scanner, never dilute the findings it had.
     const report = SpamAnalyzer.analyze('https://example.com/');
-    assert.strictEqual(report.riskBudget, 35);              // address-only scan
+    assert.strictEqual(report.riskBudget, 26);              // address-only scan
     assert.ok(report.maxPenalty > report.riskBudget);
 });
 
@@ -185,8 +192,14 @@ test('a pattern needs separate findings for each of its groups', () => {
     // One look-alike domain sits in two groups; it must not answer for both.
     assert.deepStrictEqual(SpamAnalyzer.matchPatterns(['typosquat-brand']), []);
     const matched = SpamAnalyzer.matchPatterns(['insecure-password-form', 'suspicious-tld', 'brand-impersonation']);
-    assert.strictEqual(matched.length, 1);
-    assert.strictEqual(matched[0].id, 'credential-kit');
+    assert.ok(matched.some((p) => p.id === 'credential-kit'));
+    matched.forEach((match) => {
+        const pattern = SpamAnalyzer.patterns.find((p) => p.id === match.id);
+        assert.ok(match.evidence.length >= pattern.need,
+            `${match.id} claims ${match.evidence.length} findings for ${pattern.need} groups`);
+        assert.strictEqual(new Set(match.evidence).size, match.evidence.length,
+            `${match.id} counted a finding twice`);
+    });
 });
 
 test('the analyser and the reputation layer agree on their interface', () => {

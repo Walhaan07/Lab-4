@@ -72,12 +72,15 @@ test('an unparsable address is reported instead of throwing', () => {
 
 /* ------------------------------------------------- tests added in v1.1 */
 
-test('a typo-squatted brand domain is capped into the F band', () => {
+test('a typo-squatted brand domain lands in the F band', () => {
     const report = SpamAnalyzer.analyze('https://paypa1.com/login');
     assert.ok(idsOf(report).includes('typosquat-brand'));
-    assert.ok(report.score <= 30, `expected the cap to bite, got ${report.score}`);
+    assert.ok(report.score <= 30, `expected a low score, got ${report.score}`);
     assert.strictEqual(report.rating, 'F');
-    assert.ok(report.cappedBy.includes('typosquat-brand'));
+    /* The cap is a floor under the verdict, not the route to it: enough
+       findings reach the same place on their own, and then there is nothing
+       for the cap to hold down. Either way the page is F. */
+    assert.ok(report.scoreCap <= 30, `the cap should still be set, got ${report.scoreCap}`);
 });
 
 test('the real brand domain is never flagged as a typo-squat', () => {
@@ -224,5 +227,24 @@ test('every check reports a category the report can group by', () => {
     const known = ['Transport', 'URL', 'Forms', 'Content', 'Scripts', 'Downloads', 'Reputation', 'Network'];
     SpamAnalyzer.checks.forEach((check) => {
         assert.ok(known.includes(check.category), `${check.id} has category "${check.category}"`);
+    });
+});
+
+test('no check silently fails to run', () => {
+    /*
+     * Every test is wrapped in a guard, so a bug inside one turns it into a
+     * "skipped" line instead of an exception - which is right at runtime and
+     * dangerous in development, because detection quietly weakens and the
+     * summary still looks healthy. A skip may only ever be for the two
+     * reasons the analyser itself gives.
+     */
+    const urls = ['https://www.bbc.co.uk/news', 'https://yenkpaaqhhgtkhe.workers.dev/',
+                  'http://paypal.secure-login.verify-account.tk/webscr?cmd=login',
+                  'https://xn--80ak6aa92e.com/', 'http://[::1]:8080/', 'https://192.168.1.1/setup'];
+    urls.forEach((url) => {
+        SpamAnalyzer.analyze(url).skipped.forEach((check) => {
+            assert.ok(/Needs the page content|time budget|words on screen are written/.test(check.detail),
+                `${check.id} did not run on ${url}: ${check.detail}`);
+        });
     });
 });

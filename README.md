@@ -1,21 +1,21 @@
 # VeriSite — browser extension (Lab 4, Demo 4)
 
 VeriSite is a browser extension that **embeds a button on every page the browser visits**. The button
-displays `You are on "URL"`, and pressing it runs **95 tests** on the current site to decide
+displays `You are on "URL"`, and pressing it runs **100 tests** on the current site to decide
 whether it is phishing, pharming, malware or another kind of scam, and to give it a
 **safety rating (A–F, 0–100)**.
 
 | Requirement | Where it is implemented |
 |---|---|
 | **Part 1** — embed a button on all visited pages showing `You are on "URL"` | `extension/js/content.js` + `extension/manifest.json` |
-| **Part 2** — pressing the button tests the site for spam and rates it | `extension/js/spam-analyzer.js` (95 tests), rendered by `content.js` |
+| **Part 2** — pressing the button tests the site for spam and rates it | `extension/js/spam-analyzer.js` (100 tests), rendered by `content.js` |
 
 The verdict comes from three layers rather than one:
 
 | Layer | File | What it answers |
 |---|---|---|
 | **Reputation** | `js/threat-intel.js` | *Do we already know this address?* Known-bad addresses and the published anti-malware feature test pages — which no heuristic can catch, because they are ordinary, well made pages on reputable domains. |
-| **Heuristics** | `js/spam-analyzer.js` | *How is this page built?* 95 independent tests over the address, the transport, the forms, the wording and the scripts. |
+| **Heuristics** | `js/spam-analyzer.js` | *How is this page built?* 100 independent tests over the address, the transport, the forms, the wording and the scripts. |
 | **Correlation** | `js/spam-analyzer.js` | *Do these findings add up to something?* Six attack patterns that recognise combinations no single test can see. |
 
 A fourth idea runs across all of them: the scanner keeps track of **who wrote the words on the
@@ -73,7 +73,7 @@ extension/                  <-- load THIS folder as an unpacked extension
 ├── icons/                  icon16 / icon48 / icon128 .png
 └── js/
     ├── threat-intel.js     REPUTATION - known addresses, kit fingerprints, hosting classes
-    ├── spam-analyzer.js    THE ENGINE - all 95 tests, the patterns and the scoring
+    ├── spam-analyzer.js    THE ENGINE - all 100 tests, the patterns and the scoring
     ├── content.js          PART 1 + PART 2 - injected into every page
     ├── panel-style.js      the button / report CSS, injected as text
     ├── background.js       service worker: toolbar badge, per-tab results
@@ -91,9 +91,11 @@ test-pages/                 eleven self-contained pages
 ├── feature-check-sample.html   anti-phishing test page - blocked, recognised dynamically
 ├── assistant-sample.html   scam words the visitor typed - rates A (context aware)
 └── webapp-sample.html      an ordinary application     - rates A (precision guard)
-test/analyzer.test.js       27 unit tests over the analyser
+test/analyzer.test.js       28 unit tests over the analyser
 test/intel.test.js          20 tests over the reputation layer and the address checks
 test/page.test.js           33 tests that need a rendered page (jsdom)
+test/corpus.test.js         5 tests measuring both corpora end to end
+test/corpus/               234 phishing + 99 legitimate addresses
 tools/make-icons.js         regenerates the PNG icons (optional)
 ```
 
@@ -168,7 +170,7 @@ because many sites pin their own bar down there.
 
 ## 4. Part 2 — the spam test and the safety rating
 
-Pressing the button (or **Alt+Shift+S**) runs all 95 checks and opens a report showing the
+Pressing the button (or **Alt+Shift+S**) runs all 100 checks and opens a report showing the
 score, the letter rating, every finding with its penalty, and the checks that passed.
 
 **The verdict appears on its own.** The page is checked automatically about half a second
@@ -252,7 +254,7 @@ ring, the rating badge and the findings all share.
   scan is announced. The expandable checks are `<details>` elements and the counts are real
   buttons, so both work from the keyboard without extra code.
 
-### The 95 tests
+### The 100 tests
 
 *Scope* **URL** = works from the address alone · **Page** = needs the page content.
 `*` marks a test that also caps the score. `†` marks a wording test that stands down on pages
@@ -281,7 +283,7 @@ where the visitor writes the words (see *Context awareness*).
 | 19 | `typosquat-brand` | URL | URL | Domain is a near-miss of a well known brand | 14 * |
 | 20 | `tld-in-subdomain` | URL | URL | A domain ending is buried in the sub-domain | 10 * |
 | 21 | `redirect-param` | URL | URL | Address carries another URL as a parameter | 7 |
-| 22 | `random-domain` | URL | URL | Domain looks machine generated | 6 |
+| 22 | `random-domain` | URL | URL | Host name looks machine generated | 8 |
 | 23 | `hostname-length` | URL | URL | Host name is abnormally long | 4 |
 | 24 | `insecure-password-form` | Forms | Page | Password requested over an insecure page | 15 * |
 | 25 | `cross-domain-form` | Forms | Page | Form submits your data to another site | 10 |
@@ -312,49 +314,54 @@ where the visitor writes the words (see *Context awareness*).
 | 50 | `known-threat` | Reputation | URL | Address is on a known-threat list | 25 |
 | 51 | `test-page-signature` | Reputation | Page | Page is a published security feature test | 20 † |
 | 52 | `kit-path` | URL | URL | Path matches a known phishing-kit shape | 12 |
-| 53 | `brand-in-domain` | URL | URL | Domain borrows a well known company name | 16 * |
+| 53 | `brand-in-domain` | URL | URL | Host name borrows a well known company name | 16 * |
 | 54 | `homograph-brand` | URL | URL | Domain spells a brand in look-alike letters | 18 * |
-| 55 | `free-subdomain-host` | Reputation | URL | Published on a throwaway free sub-domain | 6 |
+| 55 | `free-subdomain-host` | Reputation | URL | Published under a throwaway name on free hosting | 10 |
 | 56 | `dynamic-dns-host` | Reputation | URL | Hosted behind a dynamic DNS name | 8 |
 | 57 | `credential-in-url` | URL | URL | Address carries a personal identifier | 8 |
 | 58 | `double-extension` | URL | URL | File name hides a second extension | 12 * |
 | 59 | `archive-download` | URL | URL | Address is a direct archive download | 5 |
-| 60 | `private-network-target` | Network | Page | Page points at private network addresses | 14 * |
-| 61 | `router-attack` | Network | Page | Page aims requests at your router | 14 |
-| 62 | `dns-change-instructions` | Network | Page | Page talks you through changing DNS settings | 12 † |
-| 63 | `redirect-chain` | Network | Page | Reached through a chain of redirects | 6 |
-| 64 | `downgraded-form` | Forms | Page | Form drops out of the encrypted connection | 14 * |
-| 65 | `form-to-ip` | Forms | Page | Form posts to a bare IP address | 14 * |
-| 66 | `mailto-form` | Forms | Page | Form e-mails your details straight to someone | 16 * |
-| 67 | `credential-exfil` | Scripts | Page | Page scripts post your data to a collector | 20 * |
-| 68 | `credential-brand-mismatch` | Forms | Page | Sign-in page wears another company's identity | 20 * |
-| 69 | `otp-harvest` | Forms | Page | Page collects a one-time code as well as a password | 12 |
-| 70 | `seed-phrase-harvest` | Forms | Page | Page asks for your wallet recovery phrase | 22 * † |
-| 71 | `wallet-drainer` | Scripts | Page | Page scripts ask your wallet to sign an approval | 18 * |
-| 72 | `hidden-password-field` | Forms | Page | Page hides a password field | 7 |
-| 73 | `id-document-upload` | Forms | Page | Page asks you to upload identity documents | 10 † |
-| 74 | `keystroke-capture` | Scripts | Page | Page scripts record what you type | 12 |
-| 75 | `login-form-no-action` | Forms | Page | Sign-in form has no real destination | 8 |
-| 76 | `srcdoc-credential-frame` | Forms | Page | Password field hidden inside a written-in frame | 12 |
-| 77 | `cloned-brand-assets` | Content | Page | Page borrows another company's images and styles | 14 * |
-| 78 | `fake-address-bar` | Content | Page | Page draws a fake address bar | 12 * |
-| 79 | `fake-security-seal` | Content | Page | Page shows an unverifiable security badge | 7 † |
-| 80 | `clickfix-clipboard` | Scripts | Page | Page talks you into running a command yourself | 20 * † |
-| 81 | `fake-captcha` | Content | Page | Page fakes a human-verification prompt | 10 † |
-| 82 | `fake-update-prompt` | Content | Page | Page pushes a fake software update | 12 † |
-| 83 | `tech-support-number` | Content | Page | Support number displayed next to a scare message | 10 † |
-| 84 | `install-prompt` | Content | Page | Page offers a direct install package | 10 |
-| 85 | `gift-card-payment` | Content | Page | Page asks for payment in gift card codes | 12 † |
-| 86 | `giveaway-doubling` | Content | Page | Page promises to send back more than you send | 14 * † |
-| 87 | `investment-guarantee` | Content | Page | Page promises guaranteed investment returns | 9 † |
-| 88 | `survey-prize` | Content | Page | Page claims you have won something | 8 † |
-| 89 | `qr-payment` | Content | Page | QR code shown next to a payment request | 8 † |
-| 90 | `subscription-trap` | Content | Page | Recurring charge buried in small print | 7 † |
-| 91 | `devtools-blocking` | Scripts | Page | Page blocks inspection of itself | 9 |
-| 92 | `bot-cloaking` | Scripts | Page | Page shows something different to scanners | 10 |
-| 93 | `dynamic-script-injection` | Scripts | Page | Page hides where its scripts come from | 8 |
-| 94 | `history-trap` | Scripts | Page | Page traps the back button | 7 |
-| 95 | `data-uri-navigation` | Content | Page | Page links to inline documents or script | 10 |
+| 60 | `brand-in-path` | URL | URL | Company name used in the path by an unrelated site | 12 |
+| 61 | `encoded-path` | URL | URL | The address hides sign-in wording by encoding it | 12 * |
+| 62 | `opaque-path` | URL | URL | Address is a chain of identifiers | 8 |
+| 63 | `credential-hostname` | URL | URL | Host name is built out of sign-in words | 10 |
+| 64 | `deceptive-hostname` | URL | URL | Host name is dressed up as another address | 12 * |
+| 65 | `private-network-target` | Network | Page | Page points at private network addresses | 14 * |
+| 66 | `router-attack` | Network | Page | Page aims requests at your router | 14 |
+| 67 | `dns-change-instructions` | Network | Page | Page talks you through changing DNS settings | 12 † |
+| 68 | `redirect-chain` | Network | Page | Reached through a chain of redirects | 6 |
+| 69 | `downgraded-form` | Forms | Page | Form drops out of the encrypted connection | 14 * |
+| 70 | `form-to-ip` | Forms | Page | Form posts to a bare IP address | 14 * |
+| 71 | `mailto-form` | Forms | Page | Form e-mails your details straight to someone | 16 * |
+| 72 | `credential-exfil` | Scripts | Page | Page scripts post your data to a collector | 20 * |
+| 73 | `credential-brand-mismatch` | Forms | Page | Sign-in page wears another company's identity | 20 * |
+| 74 | `otp-harvest` | Forms | Page | Page collects a one-time code as well as a password | 12 |
+| 75 | `seed-phrase-harvest` | Forms | Page | Page asks for your wallet recovery phrase | 22 * † |
+| 76 | `wallet-drainer` | Scripts | Page | Page scripts ask your wallet to sign an approval | 18 * |
+| 77 | `hidden-password-field` | Forms | Page | Page hides a password field | 7 |
+| 78 | `id-document-upload` | Forms | Page | Page asks you to upload identity documents | 10 † |
+| 79 | `keystroke-capture` | Scripts | Page | Page scripts record what you type | 12 |
+| 80 | `login-form-no-action` | Forms | Page | Sign-in form has no real destination | 8 |
+| 81 | `srcdoc-credential-frame` | Forms | Page | Password field hidden inside a written-in frame | 12 |
+| 82 | `cloned-brand-assets` | Content | Page | Page borrows another company's images and styles | 14 * |
+| 83 | `fake-address-bar` | Content | Page | Page draws a fake address bar | 12 * |
+| 84 | `fake-security-seal` | Content | Page | Page shows an unverifiable security badge | 7 † |
+| 85 | `clickfix-clipboard` | Scripts | Page | Page talks you into running a command yourself | 20 * † |
+| 86 | `fake-captcha` | Content | Page | Page fakes a human-verification prompt | 10 † |
+| 87 | `fake-update-prompt` | Content | Page | Page pushes a fake software update | 12 † |
+| 88 | `tech-support-number` | Content | Page | Support number displayed next to a scare message | 10 † |
+| 89 | `install-prompt` | Content | Page | Page offers a direct install package | 10 |
+| 90 | `gift-card-payment` | Content | Page | Page asks for payment in gift card codes | 12 † |
+| 91 | `giveaway-doubling` | Content | Page | Page promises to send back more than you send | 14 * † |
+| 92 | `investment-guarantee` | Content | Page | Page promises guaranteed investment returns | 9 † |
+| 93 | `survey-prize` | Content | Page | Page claims you have won something | 8 † |
+| 94 | `qr-payment` | Content | Page | QR code shown next to a payment request | 8 † |
+| 95 | `subscription-trap` | Content | Page | Recurring charge buried in small print | 7 † |
+| 96 | `devtools-blocking` | Scripts | Page | Page blocks inspection of itself | 9 |
+| 97 | `bot-cloaking` | Scripts | Page | Page shows something different to scanners | 10 |
+| 98 | `dynamic-script-injection` | Scripts | Page | Page hides where its scripts come from | 8 |
+| 99 | `history-trap` | Scripts | Page | Page traps the back button | 7 |
+| 100 | `data-uri-navigation` | Content | Page | Page links to inline documents or script | 10 |
 
 ### The reputation layer
 
@@ -443,9 +450,43 @@ password box on a free sub-domain wearing a bank's logo is a phishing kit.
 | **Malware delivery page** | something that installs + something that hides how the page works |
 | **Prize / advance-fee scam** | an offer nobody makes + a disposable or anonymous publisher |
 | **Page hiding how it works** | three or more of: packed code, run-time assembly, visitor checks, blocked developer tools |
+| **Address built to be mistaken for another** | a borrowed or misspelt company name + a host that costs nothing and leads back to nobody |
+| **A page with nothing behind it** | a name and a path that mean nothing + hosting that cost nothing |
 
 A finding may only answer for one group of a pattern, so a single look-alike domain cannot
 satisfy two conditions at once and invent a pattern out of one fact.
+
+### Measured, not asserted
+
+Individual tests say "this address should be caught". The question that
+actually matters is what happens across a few hundred real ones, so the
+analyser is measured against two labelled sets in `test/corpus/`:
+**234 live phishing addresses from OpenPhish**, and **99 legitimate addresses
+chosen to look like them** — real projects on the same free hosting, real
+shops on the same new domain endings, search URLs with 450 characters of
+tracking, brands' own pages on platforms they do not own.
+
+```bash
+npm run corpus            # the summary below
+npm run corpus -- --miss  # every phishing address that was missed
+npm run corpus -- --fp    # every legitimate address that lost a point
+```
+
+|  | before this release | after |
+|---|---|---|
+| phishing rated D or F | 34.2% | **68.8%** |
+| phishing raising any finding | 41.0% | **79.1%** |
+| legitimate addresses below B | 5 | **0** |
+| legitimate addresses untouched at 100 | 88.9% | **97.0%** |
+
+Both numbers are the floor rather than the ceiling: these are address-only
+scans, and in the browser the extension also has the page in front of it.
+
+The corpus runs as part of `npm test` with thresholds set a little below what
+the analyser currently manages, so ordinary improvement never fails the build
+while a regression does — in either direction. Catching more phishing at the
+cost of calling Google a scam is not an improvement, and the test that says so
+is the one that matters most.
 
 ### Precision — what a finding has to prove
 
@@ -504,13 +545,41 @@ is now classed as nuisance rather than danger. Every search result, ad click and
 is long and heavily parameterised, and none of them is dangerous for it. Those signals still
 count towards a pattern; they just cannot take an honest page out of the safe band on their own.
 
+**And what a real corpus taught.** Measuring against OpenPhish showed the address tests were
+looking in one place — the registrable domain — while the phishing was in every other part of the
+name:
+
+* `faicbok.vercel.app`, `robiox.com.py`, `faceb00klogin.blogspot.com` — the registrable domain is
+  `vercel.app`, `com.py`, `blogspot.com`. Nothing was wrong with any of them. The name the owner
+  chose sits in front. Every label of the host is now read, folded through the characters that
+  are drawn alike (`l`→`i`, `0`→`o`, `rn`→`m`, `vv`→`w`) so that `robiox` and `roblox` compare as
+  the same word, and matched against brands whole, inside longer words, and one edit out.
+* `shopee.co.id` is Shopee and `roblox.com.mu` is not, and both are `<brand>.<suffix>`. The
+  difference is whether the ending is one that brand's customers would ever be sent to, so a
+  brand's name is its own on a major market ending and borrowed on a ccTLD nobody sells to that
+  market.
+* `microsoft.github.io` is Microsoft's own account — it had to be registered before anyone else
+  could take it — while `shopee0146.blogspot.com` is not. An exact name is the company's; a name
+  with digits, sign-in words or gibberish attached is not.
+* Free hosting stopped being a finding in itself. Millions of honest projects live on Vercel,
+  Netlify and GitHub Pages; what the platform adds is that whoever put a bank's name or a
+  generated string there needed no identity and no money to do it. So the finding is the *name*,
+  and the platform is why it was so cheap.
+* A name that reads like output — no vowels, consonants in blocks, digits scattered through,
+  letter pairs English does not use — is weighed rather than counted, because one damning sign
+  beats two mild ones. `tailwindcss` has five consonants in a row and is a real name somebody
+  typed; `yenkpaaqhhgtkhe` is not.
+* Patterns could never fire on an address alone, because every one of them required a form. Two
+  address-level patterns now close that: a borrowed name meeting a throwaway host, and a name and
+  path that both mean nothing on hosting that cost nothing.
+
 ### How the score is calculated
 
 ```
 penalty = threat findings
         + min(nuisance findings, 12)      hygiene budget
         + attack patterns
-score   = 100 - (penalty / budget) * 100  budget = 60 (page scan) or 35 (address only)
+score   = 100 - (penalty / budget) * 100  budget = 60 (page scan) or 26 (address only)
 score   = min(score, lowest cap among the findings and patterns)
 ```
 
@@ -526,7 +595,7 @@ Four ideas make the number meaningful:
    score.
 3. **Some findings cap the score.** A known address, a domain one character from `paypal.com`,
    a page asking for a wallet's recovery phrase: averaging those against ninety passing tests
-   would hide them, so 23 of the tests hold the score down regardless of what else passed.
+   would hide them, so 25 of the tests hold the score down regardless of what else passed.
 4. **A reputation hit is not a matter of degree.** It is a name already known, and the report
    says so instead of quoting a number.
 
@@ -625,7 +694,7 @@ Requires Node.js 18+; the extension itself needs nothing installed.
 
 ```bash
 npm install       # optional: installs jsdom, which enables the page tests
-npm test          # 80 tests
+npm test          # 86 tests
 npm run ui-check  # optional: drives the interface in a real browser
 ```
 
@@ -656,7 +725,7 @@ anywhere, which is a deliberate privacy choice and also the limit of what it can
 
 - **There is no live lookup.** Nothing is checked against Google Safe Browsing, PhishTank or any
   other service, so a phishing site registered this morning is judged by its shape alone. That is
-  what the 95 heuristics and the seven patterns are for, and it is why the local block list
+  what the 100 heuristics and the nine patterns are for, and it is why the local block list
   exists. The reputation layer recognises *kinds* of page rather than a list of sites, which is
   what lets it keep working as those sites change — but it cannot know that a particular domain
   went bad yesterday.

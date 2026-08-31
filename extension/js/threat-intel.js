@@ -35,7 +35,7 @@
 }(typeof self !== 'undefined' ? self : this, function () {
     'use strict';
 
-    var FEED_VERSION = '2026.09.01';
+    var FEED_VERSION = '2026.09.02';
 
     /* --------------------------------------------------------------- utils */
 
@@ -189,6 +189,17 @@
     var KIT_PATHS = [
         {name: 'PayPal "webscr" clone', pattern: /\/webscr|cmd=_?(login|account|home|update)/i},
         {name: 'kit dropped into a hacked CMS', pattern: /\/wp-(content|includes|admin)\/[^?]*\/(login|signin|verify|secure|account|bank|paypal|office|update)/i},
+        /* A folder of nonsense inside WordPress's own directories is what a
+           kit leaves behind on a site somebody else broke into. Real uploads
+           live under dated folders and have words in their names. */
+        {name: 'random folder inside a WordPress install',
+         /* Mixed case and digits both: "twentytwenty" is twelve characters of
+            ordinary theme name, and the folder a kit unpacks into is not. */
+         pattern: /\/wp-(content|includes|admin)\/[a-z0-9-]*\/?(?=[a-zA-Z0-9]*[A-Z])(?=[a-zA-Z0-9]*\d)[a-zA-Z0-9]{12,}\//},
+        /* A page buried several folders deep inside WordPress's own
+           directories. Those folders hold code and uploads, not pages: what
+           is down there is what somebody left behind after breaking in. */
+        {name: 'a page buried in a WordPress install', pattern: /\/wp-(content|includes|admin)\/(?!uploads\/)([^/?]+\/){2,}[^/?.]*(\.(html?|php))?\/?$/i},
         {name: 'webmail credential page', pattern: /\/(owa|exchange|webmail|roundcube|cpanel)\/(auth\/)?(logon|login|signin)/i},
         {name: 'copied sign-in flow', pattern: /\/(login|signin|verify|secure|account|update|confirm|password|billing|auth)[^?]*\/(verify|secure|account|update|confirm|billing|password|login|signin)/i},
         {name: 'victim address pre-filled in the link', pattern: /[?&](email|mail|usr|user|login|id)=[^&]*(%40|@)/i},
@@ -205,14 +216,28 @@
      * else's brand.
      */
     var FREE_HOSTS = [
+        /* static and app hosting */
         'pages.dev', 'workers.dev', 'r2.dev', 'web.app', 'firebaseapp.com',
-        'netlify.app', 'vercel.app', 'glitch.me', 'repl.co', 'replit.app',
+        'netlify.app', 'netlify.com', 'vercel.app', 'glitch.me', 'repl.co', 'replit.app',
         'github.io', 'gitlab.io', 'surge.sh', 'onrender.com', 'herokuapp.com',
-        '000webhostapp.com', 'weeblysite.com', 'wixsite.com', 'blogspot.com',
+        'fly.dev', 'railway.app', 'deno.dev', 'val.run', 'laravel.cloud',
+        '000webhostapp.com', 'infinityfreeapp.com', 'epizy.com', 'fwh.is', 'byethost.com',
+        /* site and page builders */
+        'weeblysite.com', 'wixsite.com', 'blogspot.com', 'wordpress.com',
         'sites.google.com', 'my.canva.site', 'notion.site', 'framer.website',
-        'square.site', 'godaddysites.com', 'jimdosite.com', 'bubbleapps.io',
-        'trycloudflare.com', 'ngrok.io', 'ngrok-free.app', 'loca.lt',
-        'serveo.net', 'azurewebsites.net', 'anvil.app', 'typedream.app'
+        'framer.app', 'framer.ai', 'square.site', 'godaddysites.com', 'jimdosite.com',
+        'bubbleapps.io', 'typedream.app', 'zapier.app', 'webflow.io', 'gitbook.io',
+        'carrd.co', 'strikingly.com', 'yolasite.com', 'mystrikingly.com', 'durable.co',
+        /* object storage and CDNs that will serve any HTML you upload */
+        'blob.core.windows.net', 'azurewebsites.net', 'azurefd.net', 'azureedge.net',
+        'linodeobjects.com', 'oortstorages.com', 'backblazeb2.com', 'digitaloceanspaces.com',
+        'storage.googleapis.com', 's3.amazonaws.com', 'objectstorage.com',
+        /* tunnels and short-lived hosts */
+        'trycloudflare.com', 'ngrok.io', 'ngrok-free.app', 'ngrok.app', 'loca.lt',
+        'serveo.net', 'anvil.app', 'telebit.io', 'localtunnel.me',
+        /* form and document hosting that phishing rents by the page */
+        'jotform.com', 'form.jotform.com', 'formstack.com', 'typeform.com',
+        'sviluppo.host', 'us.cc'
     ];
 
     /*

@@ -60,18 +60,34 @@
     /* ---------------------------------------------------------------- data */
 
     // Free / heavily abused top level domains.
+    /*
+     * Endings that are given away or sold for pennies, with little check on
+     * who registers them. Plenty of honest sites use some of these, which is
+     * why the finding is worth a few points rather than a verdict - it is the
+     * company an address keeps that matters.
+     */
     var SUSPICIOUS_TLDS = [
         'tk', 'ml', 'ga', 'cf', 'gq', 'xyz', 'top', 'work', 'click', 'link',
         'loan', 'download', 'review', 'country', 'stream', 'gdn', 'mom',
         'racing', 'win', 'bid', 'trade', 'date', 'faith', 'cricket', 'party',
-        'science', 'accountant', 'zip', 'mov', 'rest', 'buzz', 'cam'
+        'science', 'accountant', 'zip', 'mov', 'rest', 'buzz', 'cam',
+        /* the current crop, seen across this feed */
+        'shop', 'bond', 'club', 'lol', 'icu', 'cfd', 'sbs', 'cyou', 'vip',
+        'sale', 'quest', 'monster', 'autos', 'boats', 'christmas', 'degree',
+        'makeup', 'hair', 'skin', 'beauty', 'fun', 'live', 'life', 'store',
+        'site', 'space', 'website', 'host', 'press', 'uno', 'pictures', 'ink',
+        'cc', 'pw', 'su', 'ws', 'best', 'today', 'world', 'digital', 'online',
+        'pro', 'info', 'biz', 'me', 'tech', 'fit', 'run', 'rip', 'wiki'
     ];
 
     // URL shorteners hide the real destination.
     var SHORTENERS = [
         'bit.ly', 'goo.gl', 'tinyurl.com', 't.co', 'ow.ly', 'is.gd', 'buff.ly',
         'adf.ly', 'bit.do', 'cutt.ly', 'shorte.st', 'rb.gy', 'rebrand.ly',
-        'tiny.cc', 'lnkd.in', 'db.tt', 'qr.ae', 'v.gd', 'x.co', 'shorturl.at'
+        'tiny.cc', 'lnkd.in', 'db.tt', 'qr.ae', 'v.gd', 'x.co', 'shorturl.at',
+        'lnk.ink', 'surl.li', 'g5.lu', 't.ly', 'tiny.one', 'soo.gd', 'clck.ru',
+        'vk.cc', 'qps.ru', 'u.to', 'gg.gg', 's.id', 'shrtco.de', 'linktr.ee',
+        'rbcode.net', 'zenin.cc', 'short.io', 'kutt.it', 'spoo.me'
     ];
 
     // Brands that phishing pages love to imitate.
@@ -80,7 +96,12 @@
         'google', 'gmail', 'facebook', 'instagram', 'whatsapp', 'netflix',
         'amazon', 'ebay', 'dhl', 'fedex', 'ups', 'hsbc', 'barclays', 'chase',
         'wellsfargo', 'citibank', 'santander', 'revolut', 'binance', 'coinbase',
-        'metamask', 'blockchain', 'steam', 'roblox', 'linkedin', 'dropbox'
+        'metamask', 'blockchain', 'steam', 'roblox', 'linkedin', 'dropbox',
+        /* names this feed shows being worn */
+        'shopee', 'bybit', 'ledger', 'exodus', 'uphold', 'trustwallet',
+        'spotify', 'discord', 'telegram', 'tiktok', 'snapchat', 'twitch',
+        'fortnite', 'minecraft', 'xfinity', 'allegro', 'wetransfer', 'docusign',
+        'mercadolibre', 'bradesco', 'nubank', 'sparkasse', 'postbank', 'ledgerlive'
     ];
 
     // Words that belong to a credential harvesting flow.
@@ -190,7 +211,16 @@
         wellsfargo: 'wellsfargo.com', citibank: 'citi.com', santander: 'santander.com',
         revolut: 'revolut.com', binance: 'binance.com', coinbase: 'coinbase.com',
         metamask: 'metamask.io', blockchain: 'blockchain.com', steam: 'steampowered.com',
-        roblox: 'roblox.com', linkedin: 'linkedin.com', dropbox: 'dropbox.com'
+        roblox: 'roblox.com', linkedin: 'linkedin.com', dropbox: 'dropbox.com',
+        shopee: 'shopee.com', bybit: 'bybit.com', ledger: 'ledger.com',
+        ledgerlive: 'ledger.com', exodus: 'exodus.com', uphold: 'uphold.com',
+        trustwallet: 'trustwallet.com', spotify: 'spotify.com', discord: 'discord.com',
+        telegram: 'telegram.org', tiktok: 'tiktok.com', snapchat: 'snapchat.com',
+        twitch: 'twitch.tv', fortnite: 'epicgames.com', minecraft: 'minecraft.net',
+        xfinity: 'xfinity.com', allegro: 'allegro.pl', wetransfer: 'wetransfer.com',
+        docusign: 'docusign.com', mercadolibre: 'mercadolibre.com',
+        bradesco: 'bradesco.com.br', nubank: 'nubank.com.br',
+        sparkasse: 'sparkasse.de', postbank: 'postbank.de'
     };
 
     /*
@@ -239,6 +269,61 @@
         linkedin: ['linkedin.com', 'licdn.com'],
         dropbox: ['dropbox.com', 'dropboxusercontent.com', 'dropboxstatic.com']
     };
+
+    /*
+     * Endings a real company's country site actually uses. A brand's name on
+     * one of these is very likely to be that brand: shopee.co.id is Shopee in
+     * Indonesia. The same name on a ccTLD nobody sells to that market -
+     * roblox.com.mu, roblox.ly - is somebody who registered a famous word
+     * cheaply, which is a different thing entirely.
+     */
+    var MAJOR_MARKET_TLDS = [
+        'com', 'net', 'org', 'co', 'io', 'ai', 'app', 'dev',
+        'co.uk', 'uk', 'de', 'fr', 'es', 'it', 'nl', 'be', 'ch', 'at', 'se', 'no',
+        'dk', 'fi', 'ie', 'pt', 'pl', 'cz', 'gr', 'ro', 'hu', 'ua', 'ru',
+        'com.br', 'com.mx', 'com.ar', 'cl', 'co.id', 'id', 'sg', 'com.sg', 'my',
+        'com.my', 'ph', 'com.ph', 'vn', 'com.vn', 'th', 'co.th', 'in', 'co.in',
+        'jp', 'co.jp', 'kr', 'co.kr', 'cn', 'com.cn', 'com.hk', 'tw', 'com.tw',
+        'com.au', 'co.nz', 'ca', 'us', 'co.za', 'ae', 'sa', 'com.tr', 'il', 'co.il'
+    ];
+
+    /*
+     * The endings above are cheap rather than free. A shop on .shop is
+     * ordinary; a bank on .shop is not. They are separated so that an honest
+     * business on a modern ending is not treated like a throwaway.
+     */
+    var COMMERCIAL_TLDS = ['shop', 'store', 'online', 'site', 'live', 'life',
+                           'digital', 'world', 'today', 'best', 'app', 'blog'];
+
+    // Words a host name carries when it wants to be signed into.
+    var CREDENTIAL_WORDS = [
+        'login', 'signin', 'sign-in', 'log-in', 'auth', 'verify', 'verification',
+        'verified', 'secure', 'security', 'account', 'accounts', 'update',
+        'confirm', 'recovery', 'recover', 'unlock', 'suspended', 'appeal',
+        'support', 'helpdesk', 'billing', 'invoice', 'payment', 'wallet',
+        'password', 'credential', 'mfa', 'otp', 'authenticate', 'official',
+        'validation', 'activate', 'reactivate', 'restore'
+    ];
+
+    // Words that offer something free, which is the other half of the bait.
+    var BAIT_WORDS = [
+        'free', 'robux', 'vbucks', 'bucks', 'gift', 'giveaway', 'reward',
+        'rewards', 'prize', 'winner', 'claim', 'bonus', 'promo', 'hadiah',
+        'generator', 'loot', 'gems', 'coins', 'cashback', 'voucher',
+        'follower', 'followers', 'likes', 'views', 'subscribers', 'fans',
+        'hack', 'unlimited', 'promo2026', 'winner2026'
+    ];
+
+    // Words that are ordinary next to a company name: their own blog, docs, dev site.
+    var NEUTRAL_SUFFIX_WORDS = [
+        /* Only words a company writes about itself. "community", "help",
+           "team" and "store" were here too, and they are exactly the words a
+           fake page picks: facebook-community.blogspot.com read as Facebook's
+           own until they came out. */
+        'blog', 'blogs', 'docs', 'developer', 'developers', 'dev', 'news',
+        'labs', 'research', 'engineering', 'design', 'opensource', 'status',
+        'careers', 'jobs', 'press', 'about', 'forum'
+    ];
 
     // Words that only make sense if the page wants a wallet's recovery phrase.
     var SEED_PHRASE_WORDS = [
@@ -428,7 +513,14 @@
      * make the scanner sharper, never gentler on the pages it already caught.
      */
     var RISK_POINTS_PAGE = 60;      // points that take a full page scan to zero
-    var RISK_POINTS_URL = 35;       // ... and an address-only scan, which has fewer signals
+    /*
+     * An address-only scan has fewer signals available, so each one it does
+     * find has to count for more. Measured against a set of live phishing
+     * addresses, most of what the tests found sat one finding short of the
+     * suspicious band while legitimate addresses raised nothing at all - the
+     * budget, not the tests, was what stood between them.
+     */
+    var RISK_POINTS_URL = 26;
     var HYGIENE_BUDGET = 12;        // most a page can lose for nuisance-only findings
 
     /*
@@ -861,6 +953,304 @@
         return null;
     }
 
+    /* ------------------------------------------------- reading a host name */
+
+    /*
+     * Characters that are drawn alike, folded onto one symbol each, so a name
+     * can be compared with the brand it is imitating rather than with itself.
+     * "robiox" and "roblox" both become "robiox"; "faceb00k" becomes
+     * "facebook"; "wvvw" becomes "www".
+     */
+    function skeleton(text) {
+        return String(text).toLowerCase()
+            .replace(/vv/g, 'w').replace(/rn/g, 'm').replace(/cl/g, 'd')
+            .replace(/[1|!]/g, 'i').replace(/l/g, 'i')
+            .replace(/0/g, 'o').replace(/[5$]/g, 's').replace(/3/g, 'e')
+            .replace(/[4@]/g, 'a').replace(/7/g, 't').replace(/9/g, 'g').replace(/8/g, 'b');
+    }
+
+    /** Is this piece of a host name a brand, or near enough to be read as one? */
+    function brandLikeness(token) {
+        if (!token || token.length < 3) { return null; }
+        var folded = skeleton(token);
+
+        for (var i = 0; i < BRANDS.length; i++) {
+            var brand = BRANDS[i];
+            var target = skeleton(brand);
+
+            if (folded === target) { return {brand: brand, kind: 'exact'}; }
+            if (target.length >= 5 && folded.indexOf(target) !== -1) {
+                return {brand: brand, kind: 'inside'};
+            }
+            /* Shorter names need a seam to sit against, or "ups" would match
+               half the words in the language: zoomus6invite starts with one. */
+            if (target.length === 4 && new RegExp('(^|[^a-z])' + target).test(folded)) {
+                return {brand: brand, kind: 'inside'};
+            }
+
+            /* A near miss only counts when the two are close in length: at a
+               distance of two, unrelated short names collide with each other. */
+            var allowed = target.length >= 7 ? 2 : 1;
+            if (Math.abs(folded.length - target.length) <= 2 && target.length >= 4) {
+                if (editDistance(folded, target) <= allowed) {
+                    return {brand: brand, kind: 'near'};
+                }
+            }
+
+            /* ... or when the brand is spelled wrongly inside a longer word,
+               which is how facbookapp and exooduseb3wallet are built. */
+            if (target.length >= 6 && folded.length > target.length) {
+                for (var start = 0; start + target.length - 1 <= folded.length; start++) {
+                    for (var span = target.length - 1; span <= target.length + 1; span++) {
+                        var window = folded.substr(start, span);
+                        if (window.length >= 4 && editDistance(window, target) === 1) {
+                            return {brand: brand, kind: 'near'};
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /*
+     * The letter pairs English actually uses. A name somebody chose is built
+     * out of them; a name a script produced is not, and this is the cheapest
+     * way to tell the two apart without shipping a dictionary.
+     */
+    var COMMON_BIGRAMS = ('th he in er an re on at en nd ti es or te of ed is it al ar st to nt ng se ' +
+        'ha as ou io le ve co me de hi ri ro ic ne ea ra ce li ch ll be ma si om ur ca el ta la ns di ' +
+        'fo ho pe ec pr no ct us ac ot il tr ly nc et ut ss so rs un lo wa ge ie wh ee wi em ad ol rt ' +
+        'po we na ul ni ts mo ow pa im mi ai sh ir su id os iv ia am fi ci vi pl ig tu ev ld ry mp fe ' +
+        'bl ab gh ty op wo sa ay ex ke fr oo av ag if ap gr od bo sp ub ei oi au ui ck nk ' +
+        /* the rest of what ordinary names are built from: without these, real
+           words score like generated ones and duckduckgo reads as machine output */
+        'du uc kd kg go ba bi bu da do da ef eg ek ep eq ew ey ez ff fl fu ga gi gl gu ho hu ib ib ' +
+        'ich ide ies ing ion ise ish ist ite ity ive ize ' +
+        'ja je ju ka ke ki ko ku lu ly ma mu my nu ny oa ob oc of og oh oj ok om op oq os ov ox oy oz ' +
+        'qu rd rk rm rn rp rr sc sk sl sm sn st sw tw ty ub ud ug uk um up ur ut uv ux uy va vo vu ' +
+        'wr xa xe xi xo xt ya ye yi yo yp ys yt za ze zi zo zz nn mm tt ll dd gg pp rr cc bb ff ' +
+        'ai ao au aw ax ay az ea eb ee ei eo eu ev ia ie io iu oa oe oi oo ou ua ue ui uo').split(' ');
+
+    /** Best effort base64, wherever the code happens to be running. */
+    function decodeBase64(text) {
+        try {
+            var padded = text.replace(/-/g, '+').replace(/_/g, '/');
+            while (padded.length % 4) { padded += '='; }
+            if (typeof atob === 'function') { return atob(padded); }
+            if (typeof Buffer === 'function') { return Buffer.from(padded, 'base64').toString('binary'); }
+        } catch (e) { /* not base64 after all */ }
+        return '';
+    }
+
+    /** How much of this word is built out of pairs English uses? */
+    function readability(text) {
+        var letters = String(text).toLowerCase().replace(/[^a-z]/g, '');
+        if (letters.length < 4) { return 1; }
+        var known = 0;
+        for (var i = 0; i < letters.length - 1; i++) {
+            if (COMMON_BIGRAMS.indexOf(letters.substr(i, 2)) !== -1) { known++; }
+        }
+        return known / (letters.length - 1);
+    }
+
+    /**
+     * Does this label read like something a person chose, or like output?
+     *
+     * Evidence is weighed rather than counted: one damning sign is worth more
+     * than two mild ones, and "a long run of consonants" is mild - tailwindcss
+     * has five in a row and is a real name somebody typed on purpose.
+     */
+    function looksGenerated(label) {
+        if (label.length < 6) { return null; }
+        var letters = label.replace(/[^a-z]/g, '');
+        var digits = (label.match(/\d/g) || []).length;
+        var hyphenated = label.indexOf('-') !== -1;
+        var reasons = [];
+        var score = 0;
+
+        if (letters.length >= 5 && !/[aeiou]/.test(letters)) { score += 3; reasons.push('no vowels at all'); }
+
+        var run = longestConsonantRun(label);
+        if (run >= 6) { score += 2; reasons.push(run + ' consonants in a row'); }
+        else if (run >= 5) { score += 1; reasons.push('a long run of consonants'); }
+
+        if (digits / label.length >= 0.4) { score += 3; reasons.push('mostly digits'); }
+        else if (digits >= 3 && /[a-z]\d[a-z]|\d[a-z]\d/.test(label)) {
+            score += 1; reasons.push('digits scattered through the letters');
+        }
+
+        if (!hyphenated && letters.length >= 16) { score += 2; reasons.push('a very long unbroken name'); }
+        else if (!hyphenated && letters.length >= 14) { score += 1; reasons.push('a long unbroken name'); }
+
+        /*
+         * Readability supports the other signals rather than standing alone:
+         * on its own it called duckduckgo machine output, because a word
+         * repeated twice scores as badly as a random one.
+         */
+        if (letters.length >= 10 && !/(.{3,})\1/.test(letters)) {
+            var reads = readability(label);
+            if (reads < 0.30) { score += 2; reasons.push('letter pairs English does not use'); }
+            else if (reads < 0.45) { score += 1; reasons.push('few letter pairs English uses'); }
+        }
+
+        if (!hyphenated && label.length >= 8 && entropy(label) > 3.6) {
+            score += 1; reasons.push('no letter repeated');
+        }
+
+        return score >= 3 ? reasons : null;
+    }
+
+    /*
+     * Hosting platforms hand out a name when you do not choose one: two words
+     * and a piece of a hash, or three words. A project somebody means to keep
+     * gets renamed; a page put up to catch a hundred victims this afternoon
+     * keeps whatever it was given.
+     */
+    function platformDefaultName(label) {
+        /* The hash is the giveaway. Three words on their own is what a project
+           is called - nextjs-blog-starter, cloudflare-workers-examples. */
+        return /^[a-z]+-[a-z]+-[0-9a-f]{4,10}$/.test(label) ||
+               /^[a-z]{2,}-[a-z0-9]{4,}-[0-9a-f]{6,}$/.test(label);
+    }
+
+    /**
+     * Everything the host name itself can be asked, worked out once per scan.
+     *
+     * The important idea is which label the owner actually chose. On a free
+     * platform that is the label in front of the platform's own name -
+     * "faicbok" in faicbok.vercel.app - and on an ordinary domain it is the
+     * one in front of the public suffix. Looking only at the registrable
+     * domain, as the earlier tests did, sees "vercel.app" and finds nothing.
+     */
+    function hostFacts(c) {
+        if (c.hostFacts) { return c.hostFacts; }
+
+        var host = String(c.decodedHost || c.host).replace(/:\d+$/, '');
+        var facts = {
+            platform: null, labels: [], tokens: [], site: '',
+            brands: [], generated: [], credential: [], bait: [], deceptive: []
+        };
+        if (!host || isIpHost(host)) { c.hostFacts = facts; return facts; }
+
+        facts.platform = INTEL.freeHost(host) || INTEL.dynamicDns(host);
+        var parts = host.split('.');
+        var suffixLength = facts.platform
+            ? facts.platform.split('.').length
+            : registrableDomain(host).split('.').length - 1;
+        facts.labels = parts.slice(0, Math.max(0, parts.length - suffixLength))
+            .filter(function (label) { return label && label !== 'www'; });
+        facts.site = facts.labels[facts.labels.length - 1] || '';
+        facts.tld = parts.slice(parts.length - Math.min(2, suffixLength || 1)).join('.');
+
+        facts.labels.forEach(function (label) {
+            /* Tokens as a reader would see them: split on the separators, and
+               on the seam between letters and digits (shopee0146). */
+            var tokens = label.split(/[-_]+/).reduce(function (all, part) {
+                return all.concat(part.split(/(?<=[a-z])(?=\d)|(?<=\d)(?=[a-z])/));
+            }, []).filter(Boolean);
+            facts.tokens = facts.tokens.concat(tokens);
+
+            var seen = brandLikeness(label);
+            if (!seen) {
+                for (var i = 0; i < tokens.length && !seen; i++) { seen = brandLikeness(tokens[i]); }
+            }
+            if (!seen && tokens.length > 1) {
+                // "trust-wallaet" only reads as a brand once the words are joined
+                seen = brandLikeness(tokens.join(''));
+            }
+            if (seen) { facts.brands.push({label: label, brand: seen.brand, kind: seen.kind}); }
+
+            var generated = looksGenerated(label);
+            /* Hyphens hide a generated name from the tests above, because each
+               piece is short and the whole is not one run of letters. A name
+               made of several meaningless pieces is the same thing spelled
+               differently: aw9y-h61lsm-8yd85-qbm-buc80. */
+            if (!generated && tokens.length >= 3) {
+                var nonsense = tokens.filter(function (token) {
+                    if (token.length < 3) { return false; }
+                    if (!/[aeiou]/.test(token.replace(/[^a-z]/g, '')) && token.length >= 4) { return true; }
+                    if (/\d/.test(token) && /[a-z]/.test(token)) { return true; }
+                    return token.length >= 5 && readability(token) < 0.4;
+                });
+                if (nonsense.length >= 2 && nonsense.length >= tokens.length - 1) {
+                    generated = [nonsense.length + ' of its ' + tokens.length + ' pieces are not words'];
+                }
+            }
+            if (generated) { facts.generated.push({label: label, reasons: generated}); }
+            if (platformDefaultName(label)) { facts.defaultName = label; }
+            if (label.indexOf('--') !== -1 && label.indexOf('xn--') !== 0) {
+                facts.deceptive.push('a doubled hyphen, which no ordinary name has');
+            }
+
+            /*
+             * Words are counted once each. "accounts" and "account" are the
+             * same word twice, and counting both turned accounts.google.com
+             * into a page built out of sign-in words.
+             */
+            var record = function (list, word) {
+                for (var i = 0; i < list.length; i++) {
+                    if (list[i].indexOf(word) !== -1) { return; }             // already have a longer form
+                    if (word.indexOf(list[i]) !== -1) { list[i] = word; return; }
+                }
+                list.push(word);
+            };
+
+            /* Inside a longer run of letters too: "krkrnlloginh" and
+               "instagramlogin910" never separate the word out, which is rather
+               the point of writing them that way. */
+            var folded = skeleton(label);
+            CREDENTIAL_WORDS.forEach(function (word) {
+                /* supp0rt is support, and it was written that way on purpose. */
+                if (word.length >= 5 && (label.indexOf(word) !== -1 ||
+                    folded.indexOf(skeleton(word)) !== -1)) { record(facts.credential, word); }
+            });
+            BAIT_WORDS.forEach(function (word) {
+                if (word.length >= 5 && (label.indexOf(word) !== -1 ||
+                    folded.indexOf(skeleton(word)) !== -1)) { record(facts.bait, word); }
+            });
+
+            tokens.forEach(function (token) {
+                if (CREDENTIAL_WORDS.indexOf(token) !== -1) { record(facts.credential, token); }
+                if (BAIT_WORDS.indexOf(token) !== -1) { record(facts.bait, token); }
+                if (token === 'www' || token === 'http' || token === 'https') {
+                    facts.deceptive.push(token);
+                }
+            });
+            if (skeleton(label).indexOf('www') !== -1 && label !== 'www') {
+                facts.deceptive.push('a second "www" inside the name');
+            }
+        });
+
+        if (host.indexOf('_') !== -1) { facts.deceptive.push('an underscore, which a real host name cannot contain'); }
+
+        c.hostFacts = facts;
+        return facts;
+    }
+
+    /** Is this name the brand's own, rather than somebody borrowing it? */
+    function ownedByBrand(brand, c, facts) {
+        if (brandOwnsDomain(brand, c.domain)) { return true; }
+
+        var name = c.domain.split('.')[0];
+        var suffix = c.domain.slice(name.length + 1);
+        /* A brand's own country site: the name is exactly the brand, on an
+           ending that brand's customers would actually be sent to. */
+        if (name === brand && MAJOR_MARKET_TLDS.indexOf(suffix) !== -1) { return true; }
+
+        /* On a platform, an account named exactly after the brand had to be
+           registered before anybody else could take it, which companies do:
+           microsoft.github.io, facebook.github.io. */
+        if (facts.platform && facts.site === brand) { return true; }
+
+        /* The brand's own blog or docs on that platform reads the same way. */
+        if (facts.platform && facts.site.indexOf(brand) === 0) {
+            var rest = facts.site.slice(brand.length).replace(/^[-_]/, '');
+            if (NEUTRAL_SUFFIX_WORDS.indexOf(rest) !== -1) { return true; }
+        }
+        return false;
+    }
+
     /**
      * How big is this element meant to be?
      *
@@ -1070,9 +1460,13 @@
             category: 'URL',
             weight: 10,
             run: function (c) {
-                var beforePath = c.href.split(/[?#]/)[0];
-                return beforePath.indexOf('@') !== -1
-                    ? 'The URL contains "@"; everything before it is ignored by the browser and can hide the real host.'
+                /* Only an "@" before the first slash does anything: that is the
+                   part the browser reads as a host. An @ in the path is a user
+                   handle - every TikTok, Instagram and Mastodon profile has one. */
+                var authority = c.href.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').split(/[/?#]/)[0];
+                return authority.indexOf('@') !== -1
+                    ? 'The address has "@" in the host part; everything before it is ignored by the ' +
+                      'browser and can hide the real host.'
                     : null;
             }
         },
@@ -1104,9 +1498,15 @@
             weight: 8,
             run: function (c) {
                 var tld = c.host.split('.').pop();
-                return SUSPICIOUS_TLDS.indexOf(tld) !== -1
-                    ? '".' + tld + '" is a free / frequently abused top level domain.'
-                    : null;
+                if (SUSPICIOUS_TLDS.indexOf(tld) === -1) { return null; }
+                /* A shop on .shop is ordinary; the giveaway endings are the
+                   ones that cost nothing and are abandoned the same week. */
+                var commercial = COMMERCIAL_TLDS.indexOf(tld) !== -1;
+                return {
+                    detail: '".' + tld + '" is a ' + (commercial ? 'cheap, heavily abused' : 'free or nearly free') +
+                            ' top level domain.',
+                    points: commercial ? 4 : 8
+                };
             }
         },
         {
@@ -1121,10 +1521,11 @@
             weight: 12,
             run: function (c) {
                 /* "Not in the domain" is not the same as "not the owner":
-                   outlook.live.com and s3.amazonaws.com are the companies
-                   themselves, on a domain that does not spell their name. */
+                   outlook.live.com is Microsoft, and microsoft.github.io is
+                   Microsoft's own account on a platform it had to register. */
+                var facts = hostFacts(c);
                 var notInDomain = function (brand) {
-                    return c.domain.indexOf(brand) === -1 && !brandOwnsDomain(brand, c.domain);
+                    return c.domain.indexOf(brand) === -1 && !ownedByBrand(brand, c, facts);
                 };
                 var host = subdomainLabels(c.host).join('.').toLowerCase();
                 var path = c.url.pathname.toLowerCase();
@@ -1388,11 +1789,25 @@
             weight: 14,
             run: function (c) {
                 if (BRAND_DOMAINS.indexOf(c.domain) !== -1) { return null; }   // the real thing
+                if (INTEL.isOfficialDomain(c.domain)) { return null; }
+
+                /*
+                 * One character, not two. At a distance of two, ordinary
+                 * companies collide with each other - etsy.com is two edits
+                 * from ebay.com - and calling one of them a forgery of the
+                 * other is worse than missing a squat. Short names are
+                 * stricter still: three-letter words are all within two edits
+                 * of something.
+                 */
+                var name = c.domain.split('.')[0];
                 for (var i = 0; i < BRAND_DOMAINS.length; i++) {
-                    var distance = editDistance(c.domain, BRAND_DOMAINS[i]);
-                    if (distance > 0 && distance <= 2) {
-                        return '"' + c.domain + '" is only ' + distance +
-                               ' character(s) away from "' + BRAND_DOMAINS[i] + '".';
+                    var brandName = BRAND_DOMAINS[i].split('.')[0];
+                    if (name === brandName) { continue; }        // handled by brand ownership
+                    var distance = editDistance(name, brandName);
+                    var allowed = Math.min(name.length, brandName.length) >= 8 ? 2 : 1;
+                    if (distance > 0 && distance <= allowed && Math.abs(name.length - brandName.length) <= 2) {
+                        return '"' + name + '" is only ' + distance +
+                               ' character(s) away from "' + brandName + '".';
                     }
                 }
                 return null;
@@ -1446,24 +1861,23 @@
         },
         {
             id: 'random-domain',
-            about: 'The name has the shape of something generated by a program rather than chosen ' +
-                   'by a person. Malware and spam networks create such names in bulk, use each for ' +
-                   'a few days, and move on before anyone gets around to blocking them.',
-            failTitle: 'Domain looks machine generated',
-            title: 'Domain looks human readable',
+            about: 'Part of the host name reads like output rather than a name somebody chose: no ' +
+                   'vowels, long blocks of consonants, digits scattered through it. Names are ' +
+                   'registered in bulk by script when they are meant to be thrown away after a ' +
+                   'day, and it does not matter what they say because nobody is meant to read them.',
+            title: 'Host name looks human readable',
+            failTitle: 'Host name looks machine generated',
             category: 'URL',
-            weight: 6,
+            weight: 8,
             run: function (c) {
-                if (isIpHost(c.host)) { return null; }
-                var label = c.decodedDomain.split('.')[0];
-                if (label.length < 8) { return null; }
-                var bits = entropy(label);
-                var run = longestConsonantRun(label);
-                if (bits > 3.6 || run >= 5) {
-                    return '"' + label + '" has the shape of a generated domain (entropy ' +
-                           bits.toFixed(1) + ', ' + run + ' consonants in a row).';
-                }
-                return null;
+                var facts = hostFacts(c);
+                if (!facts.generated.length) { return null; }
+                var worst = facts.generated[0];
+                return {
+                    detail: '"' + worst.label + '" reads like a generated name (' +
+                            worst.reasons.slice(0, 2).join(', ') + ').',
+                    points: facts.generated.length > 1 ? 8 : 6
+                };
             }
         },
         {
@@ -2296,31 +2710,41 @@
         },
         {
             id: 'brand-in-domain',
-            about: 'The registrable domain - the part that decides who owns the site - contains a ' +
-                   'company\'s name without being that company\'s domain. Anyone can register ' +
-                   'apple-billing-support.com; nobody but Apple can register apple.com, which is ' +
-                   'the whole reason the ownership is worth checking.',
+            about: 'A well known company\'s name is in the address, on a name that company does ' +
+                   'not own. Anyone can register apple-billing-support.com, put "netflix" in front ' +
+                   'of a free hosting platform, or spell a brand with an l where the i should be. ' +
+                   'Only the company itself can own the name customers are told to look for.',
             cap: 22,
-            title: 'Domain does not borrow a company name',
-            failTitle: 'Domain borrows a well known company name',
+            title: 'Host name does not borrow a company name',
+            failTitle: 'Host name borrows a well known company name',
             category: 'URL',
             weight: 16,
             run: function (c) {
                 if (!c.domain || INTEL.isOfficialDomain(c.domain)) { return null; }
-                var name = c.domain.split('.')[0];
-                var hits = countOccurrences(name, BRANDS).filter(function (brand) {
-                    if (brandOwnsDomain(brand, c.domain)) { return false; }
-                    // The brand must be a separate word, not a fragment of a longer one.
-                    var pattern = new RegExp('(^|[^a-z])' + brand + '($|[^a-z])');
-                    return pattern.test(name) || name === brand;
+                var facts = hostFacts(c);
+                var borrowed = facts.brands.filter(function (found) {
+                    return !ownedByBrand(found.brand, c, facts);
                 });
-                if (!hits.length) { return null; }
-                var official = BRAND_SITES[hits[0]] || (hits[0] + '.com');
+                if (!borrowed.length) { return null; }
+
+                var found = borrowed[0];
+                var official = BRAND_SITES[found.brand] || (found.brand + '.com');
+                var how = found.kind === 'near'
+                    ? 'spells "' + found.brand + '" in look-alike characters ("' + found.label + '")'
+                    : 'carries "' + found.brand + '" in "' + found.label + '"';
+
+                /* A misspelling is deliberate in a way that a plain mention is
+                   not, and a borrowed name on throwaway hosting has no other
+                   explanation at all. */
+                var points = found.kind === 'near' ? 16 : 13;
+                var cap = found.kind === 'near' ? 12 : 22;
+                if (facts.platform) { points = 16; cap = 12; }
+
                 return {
-                    detail: 'The domain ' + c.domain + ' contains "' + hits[0] + '" but ' + hits[0] +
-                            ' signs its customers in on ' + official + '.',
-                    points: 16,
-                    cap: 22
+                    detail: 'The address ' + how + ', but ' + found.brand + ' signs its customers in on ' +
+                            official + '.',
+                    points: points,
+                    cap: cap
                 };
             }
         },
@@ -2356,19 +2780,37 @@
         },
         {
             id: 'free-subdomain-host',
-            about: 'The page sits on a platform that gives away a sub-domain in seconds with no ' +
-                   'questions asked. Enormous amounts of honest work is published this way, so on ' +
-                   'its own this means little - it matters when the same page also asks for a ' +
-                   'password or wears a company\'s branding.',
-            title: 'Not published on a throwaway free sub-domain',
-            failTitle: 'Published on a throwaway free sub-domain',
+            about: 'The page sits on a platform that hands out a sub-domain in seconds, under a ' +
+                   'name that is asking for something - a company\'s name, a word about signing ' +
+                   'in, or no word at all. Enormous amounts of honest work is published this way, ' +
+                   'which is why the name it was given is what matters.',
+            title: 'Not published under a throwaway name',
+            failTitle: 'Published under a throwaway name on free hosting',
             category: 'Reputation',
-            weight: 6,
+            weight: 10,
             run: function (c) {
-                var platform = INTEL.freeHost(c.host);
-                return platform
-                    ? 'The site is a free sub-domain of ' + platform + ', which anyone can claim in a minute.'
-                    : null;
+                var facts = hostFacts(c);
+                if (!facts.platform) { return null; }
+
+                /* A project on Vercel or GitHub Pages is not a finding. What
+                   the platform adds is that whoever put a bank's name, a
+                   sign-in word or a generated string there needed no identity
+                   and no money to do it. */
+                var reasons = [];
+                if (facts.brands.some(function (b) { return !ownedByBrand(b.brand, c, facts); })) {
+                    reasons.push('a company\'s name');
+                }
+                if (facts.credential.length) { reasons.push('"' + facts.credential[0] + '"'); }
+                if (facts.bait.length) { reasons.push('"' + facts.bait[0] + '"'); }
+                if (facts.generated.length) { reasons.push('a generated name'); }
+                if (facts.defaultName) { reasons.push('the name the platform gave it, never changed'); }
+                if (!reasons.length) { return null; }
+
+                return {
+                    detail: 'Anyone can claim a name on ' + facts.platform + ' in a minute, and this one ' +
+                            'carries ' + reasons.slice(0, 2).join(' and ') + '.',
+                    points: reasons.length >= 2 ? 10 : 7
+                };
             }
         },
         {
@@ -2401,11 +2843,13 @@
             run: function (c) {
                 var query = c.url.search.toLowerCase();
                 if (!query) { return null; }
-                var carriers = ['email=', 'mail=', 'password=', 'passwd=', 'pwd=', 'token=',
+                /* "pwd=" on its own is a meeting passcode as often as it is a
+                   password - every Zoom and Teams invitation carries one. */
+                var carriers = ['email=', 'mail=', 'password=', 'passwd=', 'token=',
                                 'session=', 'user=', 'login='];
                 var hits = countOccurrences(query, carriers);
                 var hasAddress = /%40|@/.test(query);
-                if (!hits.length || (!hasAddress && hits.indexOf('password=') === -1 && hits.indexOf('pwd=') === -1)) {
+                if (!hits.length || (!hasAddress && hits.indexOf('password=') === -1)) {
                     return null;
                 }
                 return 'The link already knows who you are: it carries "' + hits[0] +
@@ -2448,6 +2892,155 @@
                 return hit.length
                     ? 'The link downloads a ' + hit[0] + ' archive, which hides its contents from scanners in transit.'
                     : null;
+            }
+        },
+
+        {
+            id: 'brand-in-path',
+            about: 'A company\'s name is in the path rather than in the domain, on a site with no ' +
+                   'connection to that company. The path is the part anyone can write - a folder ' +
+                   'called netflix-clone or facebook.com proves nothing about who is running the ' +
+                   'site, which is exactly why it is put there.',
+            title: 'No borrowed company name in the path',
+            failTitle: 'Company name used in the path by an unrelated site',
+            category: 'URL',
+            weight: 12,
+            run: function (c) {
+                var facts = hostFacts(c);
+                var path = decodeURIComponent(c.url.pathname).toLowerCase();
+                if (path.length < 2) { return null; }
+
+                var hits = countOccurrences(path, BRANDS).filter(function (brand) {
+                    return !ownedByBrand(brand, c, facts) && c.domain.indexOf(brand) === -1;
+                });
+                if (!hits.length) { return null; }
+
+                /*
+                 * Ordinary sites write about companies, and their addresses
+                 * say so. What makes this a finding is where it is written:
+                 * on hosting anyone can claim, on a throwaway ending, or
+                 * beside a word about signing in or getting something free.
+                 */
+                var context = [];
+                if (facts.platform) { context.push('hosting anyone can claim'); }
+                if (SUSPICIOUS_TLDS.indexOf(c.host.split('.').pop()) !== -1) { context.push('a throwaway domain ending'); }
+                if (countOccurrences(path, CREDENTIAL_WORDS).length) { context.push('sign-in wording'); }
+                if (countOccurrences(path, BAIT_WORDS).length) { context.push('an offer of something free'); }
+                if (/clone|copy|fake|official|verify/.test(path)) { context.push('a copy of the real site'); }
+                if (!context.length) { return null; }
+
+                return {
+                    detail: 'The path claims "' + hits[0] + '" on ' + context[0] +
+                            ', while the site itself is ' + (c.domain || c.host) + '.',
+                    points: clamp(7 + context.length * 3, 7, 12)
+                };
+            }
+        },
+        {
+            id: 'encoded-path',
+            about: 'Part of the address is encoded, and decoding it gives back words about signing ' +
+                   'in. A site has no reason to hide its own page names from the person visiting ' +
+                   'it; a kit hides them so that a filter reading the address sees nothing worth ' +
+                   'stopping.',
+            cap: 30,
+            title: 'Nothing in the address is hidden by encoding',
+            failTitle: 'The address hides sign-in wording by encoding it',
+            category: 'URL',
+            weight: 12,
+            run: function (c) {
+                var candidates = (c.url.pathname + '/' + c.url.search)
+                    .split(/[/?&=_.-]/)
+                    .filter(function (part) { return part.length >= 16 && /^[A-Za-z0-9+=]+$/.test(part); });
+                for (var i = 0; i < candidates.length && i < 12; i++) {
+                    var decoded = decodeBase64(candidates[i]);
+                    if (!decoded || !/^[\x20-\x7e]+$/.test(decoded)) { continue; }
+                    var words = countOccurrences(decoded.toLowerCase(), CREDENTIAL_WORDS)
+                        .concat(countOccurrences(decoded.toLowerCase(), BRANDS));
+                    if (words.length) {
+                        return 'A part of the address decodes to "' + short(decoded, 48) +
+                               '" - the page name was encoded so that reading the address tells you nothing.';
+                    }
+                }
+                return null;
+            }
+        },
+        {
+            id: 'opaque-path',
+            about: 'The address is a string of identifiers with no words in it. Campaigns give ' +
+                   'every recipient their own link so that the page can recognise who arrived, and ' +
+                   'so that one reported address does not close the rest. A page meant to be found ' +
+                   'has words in its address.',
+            title: 'Address has readable path segments',
+            failTitle: 'Address is a chain of identifiers',
+            category: 'URL',
+            weight: 8,
+            run: function (c) {
+                var segments = c.url.pathname.split('/').filter(Boolean);
+                if (segments.length < 2) { return null; }
+
+                var opaque = segments.filter(function (segment) {
+                    var name = segment.replace(/\.(html?|php|aspx?)$/i, '');
+                    if (name.length < 6) { return false; }
+                    if (/^[0-9a-f]{8}-[0-9a-f-]{8,}$/i.test(name)) { return true; }   // a uuid
+                    if (/^[0-9a-f]{12,}$/i.test(name)) { return true; }               // a long hash
+                    return !!looksGenerated(name.toLowerCase());
+                });
+                if (opaque.length < 2) { return null; }
+
+                return {
+                    detail: opaque.length + ' of the ' + segments.length + ' parts of the path are ' +
+                            'identifiers rather than words ("' + short(opaque[0], 24) + '").',
+                    points: opaque.length >= 3 ? 8 : 6
+                };
+            }
+        },
+        {
+            id: 'credential-hostname',
+            about: 'The host name itself is about signing in - verify, secure, account, recover. A ' +
+                   'company puts those words in the path, after its own name, because the name is ' +
+                   'what it wants you to recognise. A page that needs the words in the name is ' +
+                   'usually borrowing somebody else\'s.',
+            title: 'Host name is not built out of sign-in words',
+            failTitle: 'Host name is built out of sign-in words',
+            category: 'URL',
+            weight: 10,
+            run: function (c) {
+                var facts = hostFacts(c);
+                if (!facts.credential.length) { return null; }
+                if (INTEL.isOfficialDomain(c.domain)) { return null; }
+
+                /* One such word is ordinary - support.company.com, or a login
+                   sub-domain. Two, or one alongside a company's name, is not. */
+                var brands = facts.brands.filter(function (b) { return !ownedByBrand(b.brand, c, facts); });
+                var words = facts.credential.concat(facts.bait);
+                if (words.length < 2 && !brands.length && !facts.platform) { return null; }
+
+                return {
+                    detail: 'The host name is built out of "' + words.slice(0, 3).join('", "') +
+                            '"' + (brands.length ? ' next to "' + brands[0].brand + '"' : '') + '.',
+                    points: clamp(5 + words.length * 3 + (brands.length ? 4 : 0), 5, 10)
+                };
+            }
+        },
+        {
+            id: 'deceptive-hostname',
+            about: 'The host name has "www", "http" or an underscore inside it, where they cannot ' +
+                   'mean anything. A real host name has no underscore at all, and www belongs at ' +
+                   'the front and nowhere else. Both are there to make the name read like the ' +
+                   'beginning of a different address.',
+            cap: 25,
+            title: 'Host name is not dressed up as another address',
+            failTitle: 'Host name is dressed up as another address',
+            category: 'URL',
+            weight: 12,
+            run: function (c) {
+                var facts = hostFacts(c);
+                if (!facts.deceptive.length) { return null; }
+                return {
+                    detail: 'The host name contains ' + facts.deceptive.slice(0, 2).join(' and ') +
+                            ', which is there to make it read like the start of another address.',
+                    points: 12
+                };
             }
         },
 
@@ -3452,6 +4045,43 @@
             ]
         },
         {
+            id: 'lookalike-address',
+            title: 'Address built to be mistaken for another',
+            about: 'The address wears a company\'s name - borrowed, misspelt, or moved into a part ' +
+                   'of the address that anyone can write - and it lives somewhere that costs ' +
+                   'nothing and leads back to nobody. Either alone has innocent explanations. ' +
+                   'Together they are the whole method.',
+            requires: 0,
+            need: 2,
+            points: 13,
+            cap: 18,
+            groups: [
+                ['brand-in-domain', 'homograph-brand', 'typosquat-brand', 'brand-impersonation',
+                 'brand-in-path', 'deceptive-hostname', 'tld-in-subdomain'],
+                ['free-subdomain-host', 'dynamic-dns-host', 'suspicious-tld', 'random-domain',
+                 'credential-hostname', 'kit-path', 'shortener', 'ip-host', 'https',
+                 'many-subdomains', 'opaque-path', 'credential-in-url', 'nonstandard-port',
+                 'hyphen-domain', 'digits-in-domain', 'sensitive-keywords']
+            ]
+        },
+        {
+            id: 'disposable-page',
+            title: 'A page with nothing behind it',
+            about: 'Nothing in the address means anything - a generated name, a path of ' +
+                   'identifiers - and nothing about it cost anything to set up. Pages like this ' +
+                   'are made by the thousand, used for an afternoon, and abandoned as soon as they ' +
+                   'are reported.',
+            requires: 0,
+            need: 2,
+            points: 10,
+            cap: 30,
+            groups: [
+                ['random-domain', 'opaque-path', 'credential-hostname', 'kit-path', 'executable-url'],
+                ['free-subdomain-host', 'dynamic-dns-host', 'suspicious-tld', 'shortener',
+                 'https', 'nonstandard-port', 'ip-host', 'encoded-chars']
+            ]
+        },
+        {
             id: 'pharming',
             title: 'Pharming / redirected traffic',
             requires: 0,
@@ -3950,6 +4580,6 @@
         checks: CHECKS,
         patterns: PATTERNS,
         intel: INTEL,
-        version: '4.0.0'
+        version: '5.0.0'
     };
 }));

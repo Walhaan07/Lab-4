@@ -1,13 +1,14 @@
 {
   "name": "verisite",
-  "version": "4.0.0",
+  "version": "5.0.0",
   "private": true,
   "description": "Browser extension that embeds a button showing the current URL and rates the site for phishing, pharming, malware and scam risk.",
   "scripts": {
     "test": "node --test test/*.test.js",
     "icons": "node tools/make-icons.js",
     "ui-check": "node tools/ui-check.js",
-    "store-package": "node tools/make-store-package.js"
+    "store-package": "node tools/make-store-package.js",
+    "corpus": "node tools/corpus-check.js"
   },
   "license": "MIT",
   "devDependencies": {
