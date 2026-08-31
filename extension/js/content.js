@@ -274,10 +274,37 @@
     }
 
     /*
+     * A spring, sampled rather than approximated.
+     *
+     * A cubic-bezier cannot overshoot and settle, and that settle is most of
+     * what makes a movement feel like an object rather than a value being
+     * interpolated. These are the two numbers SwiftUI uses: `response` is how
+     * long the spring takes to cover the distance, `damping` how much of the
+     * overshoot survives - below 1 it passes the target and comes back.
+     *
+     * @param {number} t seconds since the start
+     * @returns {number} progress, 0 at the start, about 1 at rest, briefly over
+     */
+    function springAt(t, response, damping) {
+        var omega = (2 * Math.PI) / response;
+        if (damping < 1) {
+            var damped = omega * Math.sqrt(1 - damping * damping);
+            return 1 - Math.exp(-damping * omega * t) *
+                (Math.cos(damped * t) + (damping * omega / damped) * Math.sin(damped * t));
+        }
+        return 1 - Math.exp(-omega * t) * (1 + omega * t);       // critically damped
+    }
+
+    /*
      * Moves the toggle round to the other side of the pill along the arc it
      * would trace if it were rolling around it, rather than jumping across.
-     * The chevron inside turns at the same time under its own transition, so
-     * the control arrives already pointing the new way.
+     *
+     * The path is a circle and the timing is a spring, sampled into keyframes
+     * so the browser interpolates between points that already carry the
+     * physics. It leaves quickly, arcs over the pill, and settles with a small
+     * overshoot; it lifts a little in scale on the way, as something crossing
+     * a gap does. The chevron inside turns under its own transition, so the
+     * control arrives already pointing the new way.
      */
     function orbitToggle(from, to) {
         var toggle = elements.toggle;
@@ -290,27 +317,36 @@
         var lift = Math.max(radius, 14);
         var direction = dx >= 0 ? 1 : -1;
         var centre = dx / 2;
+        var duration = 620;
         var frames = [];
-        var steps = 18;
+        var steps = 44;                     // dense enough that the samples read as a curve
 
         for (var i = 0; i <= steps; i++) {
             var t = i / steps;
-            var angle = Math.PI * t;                     // 0 at the old side, PI at the new
+            var progress = springAt(t * duration / 1000, 0.5, 0.74);
+            /* The arc's height and the scale follow the un-overshot progress,
+               so the lift cannot invert into a dip below the resting line;
+               only the travel itself springs past and comes back. */
+            var settled = clamp(progress, 0, 1);
+            var angle = Math.PI * progress;
+            var arc = Math.PI * settled;
+
             frames.push({
+                offset: t,
                 transform: 'translate(' +
                     (centre + direction * radius * Math.cos(angle)).toFixed(2) + 'px, ' +
-                    (dy * (1 - t) - lift * Math.sin(angle)).toFixed(2) + 'px)'
+                    (dy * (1 - progress) - lift * Math.sin(arc)).toFixed(2) + 'px) scale(' +
+                    (1 + 0.09 * Math.sin(arc)).toFixed(3) + ')'
             });
         }
+        // Land exactly where the layout puts it, whatever the last sample says.
+        frames[frames.length - 1] = {offset: 1, transform: 'translate(0px, 0px) scale(1)'};
 
-        var duration = 380;
         if (orbit) { orbit.cancel(); }
         toggle.classList.add('ssc-dock__toggle--orbiting');
-        orbit = toggle.animate(frames, {
-            duration: duration,
-            easing: 'cubic-bezier(.32, .72, 0, 1)',
-            fill: 'none'
-        });
+        /* linear: the timing is already in the samples, and easing them a
+           second time would flatten the spring back into a slide. */
+        orbit = toggle.animate(frames, {duration: duration, easing: 'linear', fill: 'none'});
         /* Cancelling fires asynchronously, so a second flip started while the
            first was still running would otherwise have the old animation's
            handler tidy up after the new one. */

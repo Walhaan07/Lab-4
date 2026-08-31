@@ -442,7 +442,15 @@
         'external-links': true, 'shouty-text': true, 'hidden-text': true,
         'overlay-ads': true, 'query-complexity': true, 'permission-abuse': true,
         'subscription-trap': true, 'site-identity': true, 'hidden-iframes': true,
-        'popup-traps': true, 'redirect-chain': true, 'free-subdomain-host': true
+        'popup-traps': true, 'redirect-chain': true, 'free-subdomain-host': true,
+        /* The shape of an address - its length, its punctuation, how many
+           parameters it carries - is a nuisance signal. Every search result,
+           ad click and analytics link is long and heavily parameterised, and
+           none of them is dangerous for it. These still count towards a
+           pattern; they just cannot take an honest page out of the safe band
+           by themselves. */
+        'long-url': true, 'hostname-length': true, 'encoded-chars': true,
+        'punycode': true, 'digits-in-domain': true
     };
 
     /* ------------------------------------------------------------- helpers */
@@ -853,6 +861,27 @@
         return null;
     }
 
+    /**
+     * How big is this element meant to be?
+     *
+     * getBoundingClientRect needs the page to have been laid out. In a subtree
+     * that has not been, and in any environment without a layout engine, it
+     * returns zeros - which would make a 600x400 frame indistinguishable from
+     * a tracking pixel. Where there is no measurement, what the markup asked
+     * for is the next best answer.
+     */
+    function declaredSize(el) {
+        var box = el.getBoundingClientRect ? el.getBoundingClientRect() : {width: 0, height: 0};
+        if (box.width || box.height) { return {width: box.width, height: box.height}; }
+        var read = function (name) {
+            var attr = parseFloat(el.getAttribute && el.getAttribute(name));
+            if (!isNaN(attr)) { return attr; }
+            var inline = el.style && el.style[name] ? parseFloat(el.style[name]) : NaN;
+            return isNaN(inline) ? 0 : inline;
+        };
+        return {width: read('width'), height: read('height')};
+    }
+
     /* Four tests want the same list, and walking a large page four times is
        four times the cost for the same answer. */
     function pageRefs(c) {
@@ -1151,8 +1180,12 @@
             category: 'URL',
             weight: 4,
             run: function (c) {
-                return c.href.length > 100
-                    ? 'The URL is ' + c.href.length + ' characters long; long URLs are used to hide the real target.'
+                /* 100 characters is an ordinary link with a campaign tag on
+                   it. Search results, ad clicks and analytics links run to
+                   several hundred, so the bar is set where padding starts to
+                   be the point rather than the side effect. */
+                return c.href.length > 220
+                    ? 'The URL is ' + c.href.length + ' characters long; padding is used to push the real domain out of sight.'
                     : null;
             }
         },
@@ -1509,17 +1542,37 @@
             needsDom: true,
             weight: 8,
             run: function (c) {
-                var hidden = 0;
-                Array.prototype.forEach.call(c.doc.querySelectorAll('iframe'), function (f) {
-                    var r = f.getBoundingClientRect ? f.getBoundingClientRect() : {width: 1, height: 1};
-                    var st = elementStyle(c.doc, f);
-                    var invisible = (st && (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) === 0));
-                    if (invisible || r.width <= 2 || r.height <= 2) { hidden++; }
+                /*
+                 * Two different things look the same in the markup. A frame
+                 * with no size is a tracking pixel, which half the web serves
+                 * and which says nothing on its own. A frame with a real size
+                 * that has been made invisible is the clickjacking shape:
+                 * something is there to be clicked, and you cannot see it.
+                 */
+                var pixels = 0;
+                var invisible = [];
+                Array.prototype.forEach.call(c.doc.querySelectorAll('iframe'), function (frame) {
+                    var box = declaredSize(frame);
+                    var style = elementStyle(c.doc, frame);
+                    var unseen = style && (style.display === 'none' || style.visibility === 'hidden' ||
+                                           Number(style.opacity) === 0);
+                    if (box.width > 60 && box.height > 60 && unseen) {
+                        invisible.push(Math.round(box.width) + '×' + Math.round(box.height));
+                    } else if (box.width <= 2 || box.height <= 2 || unseen) {
+                        pixels++;
+                    }
                 });
-                /* A single invisible frame is an analytics ping on half the
-                   sites on the internet. Several is a different habit. */
-                return hidden >= 3
-                    ? hidden + ' hidden frames are loaded in the background (clickjacking / tracking pattern).'
+
+                if (invisible.length) {
+                    return {
+                        detail: invisible.length + ' frame(s) large enough to click (' +
+                                invisible.slice(0, 2).join(', ') + ') are loaded invisibly - the clickjacking shape.',
+                        points: 8
+                    };
+                }
+                return pixels >= 6
+                    ? {detail: pixels + ' zero-sized frames are loaded in the background, which is a lot of tracking.',
+                       points: 4}
                     : null;
             }
         },
@@ -1686,31 +1739,50 @@
         },
         {
             id: 'hidden-text',
-            about: 'Text is in the page but hidden from view, while search engines still read it. ' +
-                   'This is keyword stuffing, used to get a page ranked for searches it has ' +
-                   'nothing to do with, which is how low quality and scam pages find visitors.',
+            about: 'Text is in the page, written to be read by a search engine and not by you: ' +
+                   'sized to nothing, coloured to match the background, or parked far off the ' +
+                   'side of the screen. That is keyword stuffing, used to rank a page for ' +
+                   'searches it has nothing to do with.',
             title: 'No invisible keyword stuffing',
             failTitle: 'Invisible keyword stuffing',
             category: 'Content',
             needsDom: true,
             weight: 6,
             run: function (c) {
+                /*
+                 * Only the tricks that exist to fool a crawler count. Text set
+                 * to display:none or visibility:hidden is how every menu,
+                 * dialog, tab panel and lazy-loaded section on the web is
+                 * built - counting it reported tens of thousands of hidden
+                 * characters on perfectly ordinary sites.
+                 */
                 var chars = 0;
+                var how = '';
                 var nodes = c.doc.querySelectorAll('div, span, p, section, ul');
                 for (var i = 0; i < nodes.length && i < 600; i++) {
                     var el = nodes[i];
-                    var txt = (el.textContent || '').trim();
-                    if (txt.length < 60) { continue; }
-                    var st = elementStyle(c.doc, el);
-                    if (!st) { continue; }
-                    var fontSize = parseFloat(st.fontSize || '16');
-                    if (st.display === 'none' || st.visibility === 'hidden' || fontSize < 3 ||
-                        Number(st.opacity) === 0 || st.color === st.backgroundColor) {
-                        chars += txt.length;
+                    var text = (el.textContent || '').trim();
+                    if (text.length < 120) { continue; }
+                    // Anything you could click or type into is interface, not stuffing.
+                    if (el.querySelector('a, button, input, select, textarea')) { continue; }
+
+                    var style = elementStyle(c.doc, el);
+                    if (!style) { continue; }
+                    if (style.display === 'none' || style.visibility === 'hidden') { continue; }
+
+                    var reason = null;
+                    if (parseFloat(style.fontSize || '16') < 3) { reason = 'sized to nothing'; }
+                    else if (style.color && style.color === style.backgroundColor) { reason = 'coloured to match the background'; }
+                    else if (parseFloat(style.textIndent || '0') < -999) { reason = 'indented off the page'; }
+                    else if ((style.position === 'absolute' || style.position === 'fixed') &&
+                             (parseFloat(style.left || '0') < -1999 || parseFloat(style.top || '0') < -1999)) {
+                        reason = 'parked off the side of the screen';
                     }
+                    if (reason) { chars += text.length; how = reason; }
                 }
-                return chars > 400
-                    ? 'About ' + chars + ' characters of text are hidden from the visitor but visible to search engines.'
+                return chars > 600
+                    ? 'About ' + chars + ' characters of text are ' + how +
+                      ' - readable by a search engine, invisible to you.'
                     : null;
             }
         },
@@ -1765,25 +1837,36 @@
         },
         {
             id: 'overlay-ads',
-            about: 'Several floating layers sit on top of the content. Overlays and pop-unders are ' +
+            about: 'Advertising is floating on top of the content. Overlays and pop-unders are ' +
                    'used to force adverts that cannot easily be dismissed, and to catch clicks ' +
                    'that were meant for the page underneath.',
-            title: 'No full screen overlay / pop-under',
-            failTitle: 'Full screen overlay / pop-under',
+            title: 'No full screen advertising overlay',
+            failTitle: 'Advertising overlays the content',
             category: 'Content',
             needsDom: true,
             weight: 5,
             run: function (c) {
+                /* Floating layers are how menus, dialogs, tooltips and cookie
+                   notices are built, so the layer has to be an advert before
+                   it counts as one. */
+                var adPattern = /(^|[-_ ])(ads?|adsense|adserver|banner|popunder|interstitial|sponsor|promoted|taboola|outbrain)([-_ ]|$)/i;
                 var overlays = 0;
                 var nodes = c.doc.querySelectorAll('div, section, aside');
                 for (var i = 0; i < nodes.length && i < 600; i++) {
-                    var st = elementStyle(c.doc, nodes[i]);
-                    if (!st) { continue; }
-                    var z = parseInt(st.zIndex, 10);
-                    if ((st.position === 'fixed' || st.position === 'absolute') && z > 9999) { overlays++; }
+                    var node = nodes[i];
+                    var style = elementStyle(c.doc, node);
+                    if (!style) { continue; }
+                    var z = parseInt(style.zIndex, 10);
+                    if (!((style.position === 'fixed' || style.position === 'absolute') && z > 9999)) { continue; }
+
+                    var looksLikeAd = adPattern.test(node.getAttribute('id') || '') ||
+                                      adPattern.test(node.getAttribute('class') || '') ||
+                                      !!node.querySelector('iframe[src*="doubleclick"], iframe[src*="googlesyndication"], ' +
+                                                           'iframe[src*="adservice"], ins.adsbygoogle');
+                    if (looksLikeAd) { overlays++; }
                 }
                 return overlays > 1
-                    ? overlays + ' floating overlay layers were found on top of the content.'
+                    ? overlays + ' advertising layers are floating on top of the content.'
                     : null;
             }
         },
@@ -1882,12 +1965,12 @@
         },
         {
             id: 'favicon-hotlink',
-            about: 'The small icon shown in the browser tab is loaded from another site. A cloned ' +
-                   'page often keeps the original\'s branding by linking straight to the ' +
-                   'original\'s files, which is a strong sign you are looking at a copy rather ' +
-                   'than the real thing.',
-            failTitle: 'Site icon is borrowed from another domain',
-            title: 'Site icon is served by this site',
+            about: 'The icon in the browser tab is being loaded from a well known company\'s own ' +
+                   'servers by a site that does not belong to them. A cloned page often keeps the ' +
+                   'original\'s branding by linking straight to the original\'s files, which is a ' +
+                   'strong sign you are looking at a copy rather than the real thing.',
+            failTitle: 'Site icon is taken from another company',
+            title: 'Site icon is not borrowed from another company',
             category: 'Content',
             needsDom: true,
             weight: 7,
@@ -1898,10 +1981,22 @@
                 if (!href || /^data:/i.test(href)) { return null; }
                 try {
                     var iconUrl = new URL(href, c.href);
-                    if (iconUrl.host && !sameSite(iconUrl.host, c.host)) {
-                        return 'The tab icon is loaded from ' + iconUrl.host +
-                               ', which is how a copied page keeps the original branding.';
-                    }
+                    if (!iconUrl.host || sameSite(iconUrl.host, c.host)) { return null; }
+
+                    /*
+                     * Serving your icon from your own CDN is ordinary - gstatic
+                     * for Google, an asset host for everybody else - and no
+                     * list of every company's CDN could ever be complete. What
+                     * is not ordinary is wearing a *brand's* icon while not
+                     * being that brand, and that needs no such list.
+                     */
+                    var from = registrableDomain(iconUrl.hostname);
+                    if (BRAND_DOMAINS.indexOf(from) === -1) { return null; }
+                    var brand = from.split('.')[0];
+                    if (brandOwnsDomain(brand, c.domain) || c.domain.indexOf(brand) !== -1) { return null; }
+
+                    return 'The tab icon is loaded from ' + from + ', so the page wears ' + brand +
+                           '\'s branding while being served from ' + c.domain + '.';
                 } catch (e) { /* ignore */ }
                 return null;
             }
@@ -3338,6 +3433,9 @@
             about: 'Three things showed up together: something collecting a password, a disposable ' +
                    'place to host it, and somebody else\'s identity on the page. Each is explainable ' +
                    'alone. Together they are the standard build of a phishing kit.',
+            /* Without something collecting credentials there is no credential
+               kit, whatever else the page does. */
+            requires: 0,
             need: 2,
             points: 12,
             cap: 18,
@@ -3356,6 +3454,7 @@
         {
             id: 'pharming',
             title: 'Pharming / redirected traffic',
+            requires: 0,
             about: 'The page is either pointing your browser at machines inside a private network, ' +
                    'or working on the router that decides where every name you type resolves to. ' +
                    'That is how traffic gets quietly sent to somebody else\'s server while the ' +
@@ -3372,6 +3471,7 @@
         {
             id: 'crypto-drainer',
             title: 'Crypto wallet drainer',
+            requires: 0,
             about: 'The page combines wallet machinery with somebody else\'s branding or a promise ' +
                    'of free money. Signing what a page like this asks for is not a payment, it is ' +
                    'permission, and it cannot be taken back afterwards.',
@@ -3387,6 +3487,7 @@
         {
             id: 'support-scam',
             title: 'Fake support / scareware',
+            requires: 0,
             about: 'An invented warning about your device, plus something engineered to keep you ' +
                    'on the page or on the telephone. No web page can examine your computer, so ' +
                    'the alarm is theatre and the number belongs to whoever wrote it.',
@@ -3402,6 +3503,7 @@
         {
             id: 'malware-delivery',
             title: 'Malware delivery page',
+            requires: 0,
             about: 'Something on this page installs or runs, and the page also takes trouble to ' +
                    'hide how it works. Those two together describe a delivery page rather than a ' +
                    'download you went looking for.',
@@ -3418,6 +3520,7 @@
         {
             id: 'prize-scam',
             title: 'Prize, giveaway or advance-fee scam',
+            requires: 0,
             about: 'The page makes an offer nobody makes - a prize, guaranteed returns, money back ' +
                    'from money sent - and it is published somewhere disposable or gives no way to ' +
                    'reach whoever is behind it. The offer and the anonymity go together.',
@@ -3471,24 +3574,33 @@
         PATTERNS.forEach(function (pattern) {
             var evidence = [];
             var groupsHit = 0;
+            var hasDefining = pattern.requires === undefined;
             /* A finding may only answer for one group. Without that, a single
                look-alike domain would satisfy both "a disposable host" and
                "somebody else's identity" and invent a pattern out of one fact. */
             var spent = [];
-            pattern.groups.forEach(function (group) {
+            pattern.groups.forEach(function (group, index) {
                 var hits = group.map(function (token) { return token.split(':')[0]; })
                     .filter(function (id, i) {
                         return present(group[i]) && spent.indexOf(id) === -1;
                     });
                 if (hits.length >= (pattern.minInGroup || 1)) {
                     groupsHit++;
+                    if (index === pattern.requires) { hasDefining = true; }
                     hits.forEach(function (id) { spent.push(id); });
                     hits.slice(0, 4).forEach(function (id) {
                         if (evidence.indexOf(id) === -1) { evidence.push(id); }
                     });
                 }
             });
-            if (groupsHit >= pattern.need) {
+            /*
+             * The first group is what the pattern is actually about, and it
+             * has to be there. Counting any two groups meant that a borrowed
+             * favicon and a kit-shaped address - on a search engine, of all
+             * places - added up to "credential harvesting kit" with not a
+             * password field in sight.
+             */
+            if (groupsHit >= pattern.need && hasDefining) {
                 var complete = groupsHit === pattern.groups.length && pattern.groups.length > 1;
                 found.push({
                     id: pattern.id,
@@ -3838,6 +3950,6 @@
         checks: CHECKS,
         patterns: PATTERNS,
         intel: INTEL,
-        version: '3.0.0'
+        version: '4.0.0'
     };
 }));

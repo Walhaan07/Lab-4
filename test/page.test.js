@@ -386,3 +386,97 @@ pageTest('an ad-heavy newspaper with a subscription pitch stays out of the dange
     assert.ok(report.hygienePenalty > 12, 'the nuisance findings should still be reported');
     assert.ok(report.score >= 70, `an honest newspaper must stay clear of the danger bands, got ${report.score}`);
 });
+
+/* ------------------------------------------ precision on real pages (v4) */
+/*
+ * Reported against 3.0: google.com rated C, a Google search rated F, and
+ * claude.ai rated "use caution". Three separate causes, plus one structural
+ * flaw in the pattern engine that turned two of them into a "credential
+ * harvesting kit" on a page with no password field anywhere.
+ */
+
+function searchEngine(title, extra) {
+    const panels = Array.from({length: 40}, () =>
+        `<div style="display:none">${'Menu item, settings, help, feedback, privacy, terms. '.repeat(14)}</div>`).join('');
+    const layers = Array.from({length: 5}, (_, i) =>
+        `<div class="suggestions-${i}" style="position:absolute;z-index:99999">Suggestions ${i}</div>`).join('');
+    const pixels = Array.from({length: 4}, (_, i) =>
+        `<iframe src="https://www.google.com/px${i}" width="0" height="0" style="display:none"></iframe>`).join('');
+    return `<html><head><title>${title}</title>
+        <link rel="icon" href="https://www.gstatic.com/images/branding/product/favicon.ico"></head><body>
+        <form action="/search"><input name="q" type="search"></form>
+        ${extra}
+        <span style="position:absolute;left:-9999px">Skip to main content</span>
+        ${panels}${layers}${pixels}
+        <footer><a href="/intl/en/policies/privacy/">Privacy</a></footer></body></html>`;
+}
+
+pageTest('a search engine\'s home page raises nothing at all', () => {
+    const report = scan('https://www.google.com/', searchEngine('Google', ''));
+    assert.deepStrictEqual(idsOf(report), [], `findings: ${idsOf(report).join(', ')}`);
+    assert.strictEqual(report.rating, 'A');
+});
+
+pageTest('a search results page is judged on the page, not the tracking in its address', () => {
+    const url = 'https://www.google.com/search?q=claude&sca_esv=488c0243a38d5a71&source=hp' +
+        '&ei=-yKVapXBAd_OhbIPrOuBIA&iflsig=ABILxe8AAAAAapUxC50m1IzdFxbnFgFfnVwBUdEQ67wq' +
+        '&ved=0ahUKEwjVqouoosqWAxVfZ0EAHax1AAQQ4dUDCCk&uact=5&oq=claude&sclient=gws-wiz';
+    const results = Array.from({length: 12}, (_, i) =>
+        `<div class="g"><a href="https://claude.ai/p${i}">Claude ${i}</a><span>An AI assistant.</span></div>`).join('');
+    const report = scan(url, searchEngine('claude - Google Search', results));
+
+    assert.ok(!idsOf(report).includes('kit-path'), 'a ved= parameter is not a phishing kit');
+    assert.deepStrictEqual(report.patterns, [], 'no attack pattern belongs on a search page');
+    assert.ok(report.score >= 75, `got ${report.score}: ${idsOf(report).join(', ')}`);
+    // Whatever is left must be nuisance only - a long address cannot be a threat by itself.
+    assert.strictEqual(report.threatPenalty, 0, `threat findings: ${idsOf(report).join(', ')}`);
+});
+
+pageTest('a company\'s own asset domain is not somebody else\'s branding', () => {
+    ['https://www.gstatic.com/favicon.ico', 'https://assets-proxy.anthropic.com/favicon.ico',
+     'https://cdn.some-shop.example.net/icon.png'].forEach((icon) => {
+        const html = `<html><head><link rel="icon" href="${icon}"><title>A site</title></head>
+            <body><h1>Hello</h1><a href="/privacy">Privacy</a></body></html>`;
+        assert.ok(!idsOf(scan('https://www.example.com/', html)).includes('favicon-hotlink'),
+            `${icon} was read as borrowed branding`);
+    });
+
+    // Wearing an actual brand's icon while not being that brand still counts.
+    const clone = `<html><head><link rel="icon" href="https://www.paypal.com/favicon.ico">
+        <title>Sign in</title></head><body><h1>Sign in</h1></body></html>`;
+    assert.ok(idsOf(scan('https://secure-login.example.tk/', clone)).includes('favicon-hotlink'));
+});
+
+pageTest('hidden menus and dialogs are not keyword stuffing', () => {
+    const ui = `<html><body><h1>App</h1>
+        <div style="display:none">${'Settings, help, feedback, shortcuts, about, privacy. '.repeat(40)}</div>
+        <div style="visibility:hidden">${'A dialog that has not been opened yet. '.repeat(40)}</div>
+        </body></html>`;
+    assert.ok(!idsOf(scan('https://app.example.com/', ui)).includes('hidden-text'));
+
+    const stuffed = `<html><body><h1>Shop</h1>
+        <p style="font-size:0">${'cheap deals discount vouchers coupons bargain outlet sale offers '.repeat(20)}</p>
+        </body></html>`;
+    assert.ok(idsOf(scan('https://shop.example.com/', stuffed)).includes('hidden-text'));
+});
+
+pageTest('a floating layer is only an advert when it is one', () => {
+    const layers = Array.from({length: 5}, (_, i) =>
+        `<div class="popover-${i}" style="position:fixed;z-index:99999">Menu ${i}</div>`).join('');
+    assert.ok(!idsOf(scan('https://app.example.com/', `<html><body>${layers}</body></html>`)).includes('overlay-ads'));
+
+    const ads = Array.from({length: 3}, (_, i) =>
+        `<div class="ad-overlay" style="position:fixed;z-index:99999"><iframe src="https://doubleclick.net/${i}"></iframe></div>`).join('');
+    assert.ok(idsOf(scan('https://freemovies.example.tk/', `<html><body>${ads}</body></html>`)).includes('overlay-ads'));
+});
+
+pageTest('a tracking pixel is not a clickjack, and a clickjack still is', () => {
+    const pixels = Array.from({length: 4}, (_, i) =>
+        `<iframe src="https://t${i}.example.com/p" width="0" height="0" style="display:none"></iframe>`).join('');
+    assert.ok(!idsOf(scan('https://news.example.com/', `<html><body>${pixels}</body></html>`)).includes('hidden-iframes'));
+
+    const jack = `<html><body><iframe src="https://bank.example.com/transfer"
+        style="opacity:0;width:600px;height:400px;position:absolute;top:0;left:0"></iframe>
+        <button>Click to win</button></body></html>`;
+    assert.ok(idsOf(scan('https://prizes.example.tk/', jack)).includes('hidden-iframes'));
+});

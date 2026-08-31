@@ -35,7 +35,7 @@
 }(typeof self !== 'undefined' ? self : this, function () {
     'use strict';
 
-    var FEED_VERSION = '2026.08.31';
+    var FEED_VERSION = '2026.09.01';
 
     /* --------------------------------------------------------------- utils */
 
@@ -180,9 +180,11 @@
     ];
 
     /*
-     * Path shapes that come from off-the-shelf kits and from the compromised
-     * sites they are dropped onto. A genuine bank does not keep its sign-in
-     * page in /wp-content/uploads/.
+     * Shapes that come from off-the-shelf kits and from the compromised sites
+     * they are dropped onto. Deliberately not here: "a long base64-looking
+     * value in the query". Every search engine and analytics tag carries one -
+     * Google's own ved= parameter matched it - and encoding something is not
+     * the same as hiding something.
      */
     var KIT_PATHS = [
         {name: 'PayPal "webscr" clone', pattern: /\/webscr|cmd=_?(login|account|home|update)/i},
@@ -190,7 +192,6 @@
         {name: 'webmail credential page', pattern: /\/(owa|exchange|webmail|roundcube|cpanel)\/(auth\/)?(logon|login|signin)/i},
         {name: 'copied sign-in flow', pattern: /\/(login|signin|verify|secure|account|update|confirm|password|billing|auth)[^?]*\/(verify|secure|account|update|confirm|billing|password|login|signin)/i},
         {name: 'victim address pre-filled in the link', pattern: /[?&](email|mail|usr|user|login|id)=[^&]*(%40|@)/i},
-        {name: 'base64 payload in the address', pattern: /[?&][a-z]{1,4}=(?=[^&]*[A-Z])(?=[^&]*[a-z])(?=[^&]*\d)[A-Za-z0-9+/]{40,}={0,2}(&|$)/},
         {name: 'single-file kit script', pattern: /\/(next|post|send|submit|result|done|blu|log)\.php$/i},
         {name: 'brand folder on an unrelated site', pattern: /\/(paypal|apple|icloud|microsoft|office365|netflix|amazon|dhl|coinbase|metamask)[-_/](login|signin|verify|secure|account|update|support)/i}
     ];

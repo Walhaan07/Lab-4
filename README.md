@@ -91,9 +91,9 @@ test-pages/                 eleven self-contained pages
 ├── feature-check-sample.html   anti-phishing test page - blocked, recognised dynamically
 ├── assistant-sample.html   scam words the visitor typed - rates A (context aware)
 └── webapp-sample.html      an ordinary application     - rates A (precision guard)
-test/analyzer.test.js       24 unit tests over the analyser
+test/analyzer.test.js       27 unit tests over the analyser
 test/intel.test.js          20 tests over the reputation layer and the address checks
-test/page.test.js           27 tests that need a rendered page (jsdom)
+test/page.test.js           33 tests that need a rendered page (jsdom)
 tools/make-icons.js         regenerates the PNG icons (optional)
 ```
 
@@ -146,7 +146,12 @@ because many sites pin their own bar down there.
   with the minimise control on its inner side. Dragged to the left of the window that would open
   it straight off the screen, so the whole dock mirrors: the control travels round the pill —
   along the arc it would trace if it were rolling round it, rather than jumping across — the
-  chevron turns to point the new way, and the pill then opens to the right. The same decision is
+  chevron turns to point the new way, and the pill then opens to the right. The timing is a
+  **spring**, sampled into keyframes rather than approximated with a curve: a cubic-bezier cannot
+  overshoot and settle, and that settle is most of what makes a movement feel like an object
+  rather than a value being interpolated. Measured in the browser it covers 69% of the distance
+  in the first quarter of its time, lifts 65px over the pill, swells to 1.09× at the apex, and
+  lands with a 3% overshoot that is gone by 620ms. The same decision is
   taken again on every drag, every window resize and every time it is opened, and it is taken
   from the room actually available rather than from which half of the screen it is in, with the
   current side keeping its place while it still fits so nothing flaps about mid-drag.
@@ -290,12 +295,12 @@ where the visitor writes the words (see *Context awareness*).
 | 33 | `hidden-text` | Content | Page | Invisible keyword stuffing | 6 |
 | 34 | `external-links` | Content | Page | Most links leave this site | 5 † |
 | 35 | `site-identity` | Content | Page | Page has no proper identity | 3 |
-| 36 | `overlay-ads` | Content | Page | Full screen overlay / pop-under | 5 |
+| 36 | `overlay-ads` | Content | Page | Advertising overlays the content | 5 |
 | 37 | `auto-download` | Downloads | Page | Executable file download offered | 8 |
 | 38 | `mixed-content` | Transport | Page | Insecure resources on a secure page | 7 |
 | 39 | `fake-urgency` | Content | Page | Artificial time pressure | 4 † |
 | 40 | `payment-fields` | Forms | Page | Page asks for card or identity details | 12 |
-| 41 | `favicon-hotlink` | Content | Page | Site icon is borrowed from another domain | 7 |
+| 41 | `favicon-hotlink` | Content | Page | Site icon is taken from another company | 7 |
 | 42 | `title-brand-mismatch` | Content | Page | Page claims a brand that does not own the domain | 12 * |
 | 43 | `deceptive-links` | Content | Page | Link text does not match where the link goes | 10 † |
 | 44 | `full-page-iframe` | Content | Page | Whole page is another site in a frame | 10 |
@@ -476,6 +481,29 @@ Two structural changes support all of that: `<script type="application/json">` a
 blocks are no longer read as code, and a page's visible text no longer includes the source of its
 scripts.
 
+**The same lesson again, on the page rather than in the scripts.** Version 3 rated google.com a
+**C**, a Google search an **F**, and claude.ai *use caution*. Four causes, and the fourth is the
+one worth remembering:
+
+| Test | Version 3 asked | Now asks |
+|---|---|---|
+| `favicon-hotlink` | is the tab icon on another domain? | is it on a **brand's** domain, while the page is not that brand? Serving your icon from your own CDN — gstatic for Google, an asset host for everybody else — is ordinary, and no list of every company's CDN could ever be complete. |
+| `hidden-text` | is there text with `display:none`? | is it hidden by a *stuffing* technique — sized to nothing, coloured to the background, indented off the page? `display:none` is how every menu, dialog and tab panel is built; counting it reported 39,000 hidden characters on google.com. |
+| `overlay-ads` | is there a floating layer? | is the floating layer an **advert** — ad markup, or an ad network's frame inside it? |
+| `hidden-iframes` | are there invisible frames? | is a frame *large enough to click* loaded invisibly (the clickjacking shape)? Zero-sized frames are tracking pixels, and half the web serves them. |
+| `kit-path` | is there a long base64-ish value in the query? | *(removed)* Google's own `ved=` parameter matched it. Encoding something is not hiding it. |
+
+And the structural one: **a pattern now requires the thing it is named after.** "Credential
+harvesting kit" needed any two of its three groups, so a borrowed favicon plus a kit-shaped
+address added up to a phishing kit — on a search engine, with no password field anywhere on the
+page. Each pattern now names a defining group that must be present: no credential collector, no
+credential kit; no wallet machinery, no drainer.
+
+Finally, the shape of an address — its length, its punctuation, how many parameters it carries —
+is now classed as nuisance rather than danger. Every search result, ad click and analytics link
+is long and heavily parameterised, and none of them is dangerous for it. Those signals still
+count towards a pattern; they just cannot take an honest page out of the safe band on their own.
+
 ### How the score is calculated
 
 ```
@@ -518,6 +546,8 @@ Four ideas make the number meaningful:
 |---|---|---|
 | `https://www.bbc.co.uk/news` | 100 A | nothing to report |
 | any modern web application (`test-pages/webapp-sample.html`) | 100 A | routing, telemetry, lazy chunks and minified helpers are not evidence |
+| `https://www.google.com/` | 100 A | hidden menus, suggestion layers and a CDN icon are not findings |
+| a Google search result page | 88 B | only its 452-character address counts, and only as nuisance |
 | `https://chatgpt.com/c/…` (asking about scams) | 100 A | the scam words are the visitor's, not the site's |
 | an exchange page warning you never to share your seed phrase | 100 A | warning against a thing is not asking for it |
 | an article explaining how drainers work, with code samples | 100 A | prose about code is not code |
@@ -569,7 +599,7 @@ Requires Node.js 18+; the extension itself needs nothing installed.
 
 ```bash
 npm install       # optional: installs jsdom, which enables the page tests
-npm test          # 74 tests
+npm test          # 80 tests
 npm run ui-check  # optional: drives the interface in a real browser
 ```
 

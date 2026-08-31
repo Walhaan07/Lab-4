@@ -86,7 +86,7 @@ const READ_BOXES = () => {
     const click = async (selector) => {
         const handle = await shadow(selector);
         await handle.asElement().click();
-        await page.waitForTimeout(950);
+        await page.waitForTimeout(1250);
     };
     const dragTo = async (x, y) => {
         const boxes = await page.evaluate(READ_BOXES);
