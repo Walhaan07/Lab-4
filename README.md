@@ -593,7 +593,33 @@ Every sample is a harmless mock. The "malicious" scripts in the kit, drainer and
 are `<script type="text/plain">`, which no browser executes — they are there so the scanner has
 something to find. No form target exists, and nothing is downloaded, copied or sent anywhere.
 
-## 6. Unit tests (optional)
+## 6. Publishing it to a store
+
+The folder you load unpacked is not the package a store accepts. Two things differ, and both
+fail validation rather than review:
+
+* **`manifest.json` has to be at the root of the zip.** Zipping the folder itself puts it one
+  level down.
+* **The manifest's `description` is capped at 132 characters** (the name at 45). A description
+  written for a README will be rejected on upload.
+
+`npm run store-package` builds it correctly: it checks those limits first and refuses to build a
+package that would be rejected, copies only the files the manifest actually points at — no
+second manifest, no documentation — and writes `dist/VeriSite-<version>.zip` with the manifest
+at the root. `npm run store-package -- --firefox` does the same from the Firefox manifest.
+
+Two more things a reviewer will ask about, worth knowing before you submit:
+
+* **Why the extension needs every site.** It rates the page you are looking at, so it has to be
+  able to read the page you are looking at. That is the whole justification, and it is why
+  `host_permissions` covers `http://*/*` and `https://*/*`.
+* **What it sends.** Nothing. There are no `fetch`, `XMLHttpRequest`, `sendBeacon` or
+  `WebSocket` calls anywhere in the shipped code, no remote scripts, and no `eval`. Every check
+  runs against the page already in your browser, which is also why the report says so.
+
+The permissions are `storage` and `activeTab` only.
+
+## 7. Unit tests (optional)
 
 Requires Node.js 18+; the extension itself needs nothing installed.
 
@@ -623,7 +649,7 @@ npm run ui-check  # optional: drives the interface in a real browser
   the toggle, the pill and the report all stay inside the window in every corner and at window
   sizes down to 360×640.
 
-## 7. Limitations
+## 8. Limitations
 
 The scanner runs **entirely in the browser**. Nothing is uploaded and no address is ever sent
 anywhere, which is a deliberate privacy choice and also the limit of what it can know:

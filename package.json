@@ -6,7 +6,8 @@
   "scripts": {
     "test": "node --test test/*.test.js",
     "icons": "node tools/make-icons.js",
-    "ui-check": "node tools/ui-check.js"
+    "ui-check": "node tools/ui-check.js",
+    "store-package": "node tools/make-store-package.js"
   },
   "license": "MIT",
   "devDependencies": {

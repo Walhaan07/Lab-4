@@ -2,11 +2,10 @@
   "manifest_version": 3,
   "name": "VeriSite",
   "version": "4.0.0",
-  "description": "Embeds a button on every page that shows the current URL and rates the site with 95 phishing, pharming and scam checks plus a bundled threat-intelligence feed.",
+  "description": "Shows the URL of every page you visit and rates it for phishing, pharming and scam risk. 95 checks, all run in your browser.",
   "permissions": [
     "storage",
-    "activeTab",
-    "scripting"
+    "activeTab"
   ],
   "host_permissions": [
     "http://*/*",
