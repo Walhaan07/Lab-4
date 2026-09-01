@@ -201,7 +201,22 @@
            is down there is what somebody left behind after breaking in. */
         {name: 'a page buried in a WordPress install', pattern: /\/wp-(content|includes|admin)\/(?!uploads\/)([^/?]+\/){2,}[^/?.]*(\.(html?|php))?\/?$/i},
         {name: 'webmail credential page', pattern: /\/(owa|exchange|webmail|roundcube|cpanel)\/(auth\/)?(logon|login|signin)/i},
-        {name: 'copied sign-in flow', pattern: /\/(login|signin|verify|secure|account|update|confirm|password|billing|auth)[^?]*\/(verify|secure|account|update|confirm|billing|password|login|signin)/i},
+        /*
+         * A sign-in flow whose handler is a script file.
+         *
+         * This rule used to ask only whether two sign-in words appeared in
+         * the path, one inside the other. That is the shape of nearly every
+         * real account area on the web - /accounts/login, /login/verify,
+         * /account/security/password - so it reported Instagram, Okta,
+         * Dropbox and any bank with a two-step sign-in, and across a corpus
+         * of live phishing addresses it identified none of them.
+         *
+         * What a kit has and a real sign-in flow does not is its own script
+         * sitting at the end of that path: a routed application serves
+         * /login/verify, an unpacked kit serves /login/verify/next.php.
+         */
+        {name: 'sign-in flow handled by a dropped script',
+         pattern: /\/(?:login|log-in|signin|sign-in|verify|verification|secure|security|account|accounts|update|confirm|password|billing|auth|authenticate|recover|unlock|webscr)[^/?]*\/(?:[^/?]*\/)*?[^/?]*\.(?:php|cgi|pl)(?:[?#]|$)/i},
         {name: 'victim address pre-filled in the link', pattern: /[?&](email|mail|usr|user|login|id)=[^&]*(%40|@)/i},
         {name: 'single-file kit script', pattern: /\/(next|post|send|submit|result|done|blu|log)\.php$/i},
         {name: 'brand folder on an unrelated site', pattern: /\/(paypal|apple|icloud|microsoft|office365|netflix|amazon|dhl|coinbase|metamask)[-_/](login|signin|verify|secure|account|update|support)/i}

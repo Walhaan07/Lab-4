@@ -480,3 +480,188 @@ pageTest('a tracking pixel is not a clickjack, and a clickjack still is', () => 
         <button>Click to win</button></body></html>`;
     assert.ok(idsOf(scan('https://prizes.example.tk/', jack)).includes('hidden-iframes'));
 });
+
+/* ------------------------------------------- what a page is made of (v5.1) */
+
+pageTest('linking to a company is not being built out of it', () => {
+    /*
+     * The bug this release exists to fix. "Page borrows another company's
+     * images and styles" counted every hyperlink, so a search for "icloud
+     * find my" - whose results are naturally full of apple.com links - rated
+     * Google an F, while a search for something else rated it an A. The
+     * verdict tracked what had been searched for rather than the page.
+     */
+    const results = ['https://www.apple.com/icloud/find-my/', 'https://www.icloud.com/find',
+                     'https://support.apple.com/find-my', 'https://www.apple.com/support/icloud/',
+                     'https://apps.apple.com/app/find-my']
+        .map((href, i) => `<div class="g"><a href="${href}"><h3>Result ${i}</h3></a></div>`).join('');
+    const html = `<html><head><title>icloud find my - Google Search</title></head><body>
+        <input type="search" name="q" value="icloud find my">
+        <div id="search">${results}</div></body></html>`;
+    const report = scan('https://www.google.com/search?q=icloud+find+my', html);
+
+    assert.ok(!idsOf(report).includes('cloned-brand-assets'),
+        'result links were read as borrowed assets');
+    assert.ok(report.score >= 90, `got ${report.score}: ${idsOf(report).join(', ')}`);
+});
+
+pageTest('the same search page scores the same whatever was searched for', () => {
+    /*
+     * A scanner whose verdict moves with the query is reporting the query,
+     * not the page. Two searches, identical markup, different result hosts:
+     * the score has to be the same.
+     */
+    const page = (hosts) => `<html><head><title>results - Google Search</title></head><body>
+        <input type="search" name="q" value="something">
+        <div id="search">${hosts.map((h, i) =>
+            `<div class="g"><a href="https://${h}/page${i}"><h3>Result ${i}</h3></a></div>`).join('')}</div>
+        </body></html>`;
+    const brands = ['www.apple.com', 'www.icloud.com', 'support.apple.com', 'www.apple.com', 'apps.apple.com'];
+    const others = ['claude.ai', 'www.anthropic.com', 'docs.claude.com', 'claude.ai', 'www.claude.com'];
+
+    const withBrands = scan('https://www.google.com/search?q=icloud+find+my', page(brands));
+    const withOthers = scan('https://www.google.com/search?q=claude', page(others));
+    assert.strictEqual(withBrands.score, withOthers.score,
+        `${withBrands.score} vs ${withOthers.score}: the verdict follows the query, not the page`);
+    assert.strictEqual(withBrands.rating, 'A');
+});
+
+pageTest('a company serving its own images from its own other domain is not a clone', () => {
+    // Apple serves iCloud's images from apple.com; Microsoft, Meta and
+    // Amazon all do the same across their own domains.
+    const built = (assets) => `<html><head><title>Home</title></head><body><h1>Home</h1>
+        ${assets.map((src) => `<img src="${src}">`).join('')}</body></html>`;
+    [['https://www.icloud.com/find/', 'https://www.apple.com/ac/'],
+     ['https://outlook.live.com/mail/', 'https://outlook.office.com/a/'],
+     ['https://www.instagram.com/', 'https://static.cdninstagram.com/'],
+     ['https://www.paypal.com/signin', 'https://www.paypalobjects.com/i/']].forEach(([page, host]) => {
+        const assets = [1, 2, 3, 4, 5].map((n) => `${host}${n}.png`);
+        assert.ok(!idsOf(scan(page, built(assets))).includes('cloned-brand-assets'),
+            `${page} was read as a clone of its own company's asset host`);
+    });
+});
+
+pageTest('a page really built out of another company\'s files is still a clone', () => {
+    const assets = [1, 2, 3, 4, 5].map((n) => `<img src="https://www.apple.com/ac/${n}.png">`).join('');
+    const html = `<html><head><title>Sign in to iCloud</title></head><body>${assets}
+        <form action="/p.php"><input name="appleid"><input type="password" name="pw"></form></body></html>`;
+    const report = scan('https://appleid-icloud-verify.tk/signin', html);
+    assert.ok(idsOf(report).includes('cloned-brand-assets'), 'a real clone went unreported');
+    assert.strictEqual(report.rating, 'F');
+});
+
+/* --------------------------------------------- invisible frames (v5.1) */
+
+pageTest('a frame that is switched off cannot catch a click', () => {
+    /*
+     * display:none and visibility:hidden are not rendered, so nothing can be
+     * clicked through them. Every application on the web keeps a sign-in
+     * frame or an unopened dialog this way, and reading that as clickjacking
+     * put iCloud and Outlook in the same band as a scam.
+     */
+    [['display:none', 640, 349], ['visibility:hidden', 700, 500]].forEach(([css, w, h]) => {
+        const html = `<html><head><title>App</title></head><body><h1>App</h1>
+            <iframe src="https://idp.example.com/silent" style="${css}" width="${w}" height="${h}"></iframe>
+            </body></html>`;
+        const report = scan('https://app.example.com/', html);
+        assert.ok(!idsOf(report).includes('hidden-iframes'), `${css} was read as clickjacking`);
+        assert.strictEqual(report.rating, 'A');
+    });
+});
+
+pageTest('a transparent frame that still takes clicks is a clickjack, at any opacity', () => {
+    /*
+     * Transparency is a slider, not a switch: opacity 0.02 is as invisible as
+     * opacity 0, and testing only for exact zero let the real shape through
+     * while the harmless one was being reported.
+     */
+    ['0', '0.01', '0.03'].forEach((opacity) => {
+        const html = `<html><head><title>Claim</title></head><body><h1>Claim your prize</h1>
+            <button>Click to claim</button>
+            <iframe src="https://bank.example.com/transfer" width="800" height="600"
+                style="opacity:${opacity};position:absolute;top:0;left:0;z-index:9999"></iframe>
+            </body></html>`;
+        const report = scan('https://free-gift-claim.top/', html);
+        assert.ok(idsOf(report).includes('hidden-iframes'), `opacity ${opacity} was not caught`);
+        // A real clickjack is a threat, not untidiness, so it must be able to
+        // take the page out of the safe band on its own.
+        assert.ok(report.threatPenalty > 0, 'a clickjack was filed as a nuisance');
+        assert.ok(['D', 'F'].includes(report.rating), `opacity ${opacity} rated ${report.rating}`);
+    });
+});
+
+pageTest('a transparent frame that cannot be clicked is not a clickjack', () => {
+    const html = `<html><body><h1>Fading in</h1>
+        <iframe src="/panel" width="600" height="400" style="opacity:0;pointer-events:none"></iframe>
+        </body></html>`;
+    assert.ok(!idsOf(scan('https://app.example.com/', html)).includes('hidden-iframes'));
+});
+
+/* --------------------------------------- writing about scams (v5.1) */
+
+const ARTICLE_BODY = `<p>Fraud changes constantly, but the messages criminals send follow a small
+    number of patterns, and knowing what those look like is the best protection most people have.
+    This guide sets out the ones seen most often and what to do when one arrives.</p>
+    <p>Nothing here should be acted on directly. If a message worries you, close it and reach the
+    company through a number or an app you already had before the message arrived.</p>`;
+
+pageTest('a news report about scams is not a scam', () => {
+    const html = `<html><head><title>Phishing scams cost billions</title>
+        <meta property="og:type" content="article"></head><body>
+        <article><h1>Phishing scams cost billions</h1>${ARTICLE_BODY}
+        <p>Victims are told "your account has been locked" and "verify your identity now".
+        One message said "congratulations you have won" and asked for a "wire transfer fee"
+        sent by "western union".</p>
+        <p>A caller may claim "your computer is infected" and press you to "call support now".</p>
+        </article></body></html>`;
+    const report = scan('https://www.example-news.com/technology/phishing-costs', html);
+    assert.ok(!idsOf(report).includes('spam-phrases'), 'quoted scam wording read as the paper\'s own');
+    assert.ok(!idsOf(report).includes('scareware'), 'quoted alert wording read as the paper\'s own');
+    assert.strictEqual(report.rating, 'A');
+});
+
+pageTest('a bank\'s guide to spotting a scam is not one', () => {
+    const html = `<html><head><title>How to spot a scam</title></head><body>
+        <article><h1>How to spot a scam</h1>${ARTICLE_BODY}
+        <p>A fraudster's message often opens "congratulations you have won", or warns
+        "virus detected" and "your files have been encrypted" before demanding a
+        "wire transfer fee" to put it right.</p></article></body></html>`;
+    const report = scan('https://www.example-bank.co.uk/security-centre/fraud-guide/', html);
+    assert.ok(!idsOf(report).includes('spam-phrases'));
+    assert.ok(report.score >= 90, `got ${report.score}: ${idsOf(report).join(', ')}`);
+});
+
+pageTest('quotation marks are not a way past the wording tests', () => {
+    /*
+     * The benefit of the doubt an article gets must not become a loophole.
+     * A page whose pitch IS the quotation is not reporting anything: take the
+     * quotations out and nothing is left, which is the opposite of an article.
+     */
+    const html = `<html><head><title>Prize draw</title><meta property="og:type" content="article"></head>
+        <body><article><h1>"Congratulations you have won"</h1>
+        <p>"Claim your prize" - "free money" - "act now, limited time offer".</p>
+        <p>"You have won" - "claim your prize" - "guaranteed income" - "100% free".</p>
+        </article></body></html>`;
+    const report = scan('https://mega-prize-draw.bond/', html);
+    assert.ok(idsOf(report).includes('spam-phrases'), 'a pitch in quotation marks got through');
+    assert.ok(['D', 'F'].includes(report.rating), `rated ${report.rating}`);
+});
+
+pageTest('an article shape does not excuse a page that can take something from you', () => {
+    // A scam wearing <article> still has to end somewhere: a card field, a
+    // number to ring, a wallet. That machinery is what withdraws the benefit.
+    const cases = [
+        ['card fields', `<form action="/claim.php"><input name="cardnumber"><input name="cvv"></form>`],
+        ['a number to ring', `<p>Call support now on 1-888-555-0199 to remove it.</p>`],
+        ['a wallet', `<p>Send to 0x1234567890abcdef1234567890abcdef12345678 to claim.</p>`]
+    ];
+    cases.forEach(([what, machinery]) => {
+        const html = `<html><head><title>Notice</title><meta property="og:type" content="article"></head>
+            <body><article><h1>Important notice</h1>${ARTICLE_BODY}
+            <p>Our records show "your computer is infected" and "congratulations you have won"
+            a prize worth claiming today.</p>${machinery}</article></body></html>`;
+        const report = scan('https://system-warning-alert.cyou/notice', html);
+        assert.ok(['D', 'F'].includes(report.rating),
+            `a scam with ${what} rated ${report.rating}: ${idsOf(report).join(', ')}`);
+    });
+});

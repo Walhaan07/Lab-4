@@ -432,6 +432,9 @@
     // RFC1918 / loopback / link-local, i.e. addresses that only exist inside a network.
     var PRIVATE_IP = /\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|169\.254\.\d{1,3}\.\d{1,3})\b/;
 
+    // A wallet somebody could be told to pay into.
+    var WALLET_ADDRESS = /\b(?:bc1[a-z0-9]{25,62}|[13][a-km-zA-HJ-NP-Z1-9]{25,34}|0x[a-fA-F0-9]{40})\b/;
+
     var SUPPORT_NUMBER = /(?:\+?\d{1,3}[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?){2}\d{4}|\b1[\s.-]?8(?:00|55|66|77|88)[\s.-]?\d{3}[\s.-]?\d{4}\b/;
 
     // Files a page can offer that install something rather than show something.
@@ -853,6 +856,64 @@
         }
     }
 
+    /*
+     * The reverse of BRAND_OWNED: which company each domain belongs to.
+     * Built once, so "are these two domains the same company?" is a lookup
+     * rather than a scan of every brand's list.
+     */
+    var DOMAIN_OWNER = (function () {
+        var map = {};
+        Object.keys(BRAND_OWNED).forEach(function (brand) {
+            BRAND_OWNED[brand].forEach(function (domain) {
+                /* A domain can appear under several names for the same
+                   company (icloud.com under both "apple" and "icloud"). The
+                   owner recorded is the first, and sameOwner below compares
+                   the whole family rather than the label, so which one wins
+                   does not matter. */
+                if (!map[domain]) { map[domain] = []; }
+                if (map[domain].indexOf(brand) === -1) { map[domain].push(brand); }
+            });
+        });
+        Object.keys(BRAND_SITES).forEach(function (brand) {
+            var domain = BRAND_SITES[brand];
+            if (!map[domain]) { map[domain] = []; }
+            if (map[domain].indexOf(brand) === -1) { map[domain].push(brand); }
+        });
+        return map;
+    }());
+
+    /**
+     * Do two domains belong to the same company?
+     *
+     * Apple serves icloud.com's images from apple.com, Microsoft serves
+     * outlook.com's from microsoftonline.com, Amazon's come from
+     * media-amazon.com. None of that is a page wearing somebody else's
+     * clothes; it is one company using its own wardrobe. Without this, every
+     * one of those pages reads as a clone of itself.
+     *
+     * Two domains count as one company when a brand's owned-domain list
+     * holds both, or when the lists that hold each of them overlap - which
+     * is how apple.com (listed under "apple" and "icloud") meets icloud.com.
+     */
+    function sameOwner(domainA, domainB) {
+        if (!domainA || !domainB) { return false; }
+        if (domainA === domainB) { return true; }
+        var ownersA = DOMAIN_OWNER[domainA];
+        var ownersB = DOMAIN_OWNER[domainB];
+        if (!ownersA || !ownersB) { return false; }
+        return ownersA.some(function (brand) {
+            if (ownersB.indexOf(brand) !== -1) { return true; }
+            /* Same company under two names: "icloud" and "apple" each list
+               the other's domains, so either list containing the other's
+               domain settles it. */
+            var owned = BRAND_OWNED[brand] || [];
+            return owned.indexOf(domainB) !== -1;
+        }) || ownersB.some(function (brand) {
+            var owned = BRAND_OWNED[brand] || [];
+            return owned.indexOf(domainA) !== -1;
+        });
+    }
+
     /** Does this domain legitimately belong to the brand? */
     function brandOwnsDomain(brand, domain) {
         if (!domain) { return false; }
@@ -904,19 +965,50 @@
         }
     }
 
-    /** Every URL the page points at: links, forms, scripts, frames, images. */
+    /*
+     * Every URL the page points at: links, forms, scripts, frames, images.
+     *
+     * Three different things live in a page's markup, and telling them apart
+     * is the difference between a finding and a libel.
+     *
+     *   'asset'  the browser fetches this by itself, without being asked. An
+     *            image, a stylesheet, a script: the page is *using* it.
+     *   'form'   where the page would send what you type.
+     *   'link'   somewhere the page merely points. Following it is your
+     *            decision, and nothing is fetched until you make it.
+     *
+     * A test that asks "is this page built out of another company's files?"
+     * must look at assets alone. Asking it of links instead makes every
+     * search engine, encyclopaedia and news site into a clone of whatever it
+     * links to - which is exactly the bug this marker exists to end.
+     */
+    var REFERENCE_SOURCES = [
+        {selector: 'script[src]', attr: 'src', kind: 'asset'},
+        {selector: 'img[src]', attr: 'src', kind: 'asset'},
+        {selector: 'iframe[src]', attr: 'src', kind: 'asset'},
+        {selector: 'link[href]', attr: 'href', kind: 'asset'},
+        {selector: 'source[src]', attr: 'src', kind: 'asset'},
+        {selector: 'video[src], audio[src], embed[src]', attr: 'src', kind: 'asset'},
+        {selector: 'object[data]', attr: 'data', kind: 'asset'},
+        {selector: 'form[action]', attr: 'action', kind: 'form'},
+        {selector: 'a[href]', attr: 'href', kind: 'link'}
+    ];
+
     function referencedUrls(doc, base, limit) {
         var out = [];
-        var selectors = ['a[href]', 'form[action]', 'script[src]', 'iframe[src]', 'img[src]', 'link[href]'];
         try {
-            selectors.forEach(function (selector) {
-                var nodes = doc.querySelectorAll(selector);
+            REFERENCE_SOURCES.forEach(function (source) {
+                var nodes = doc.querySelectorAll(source.selector);
                 for (var i = 0; i < nodes.length && out.length < limit; i++) {
-                    var raw = nodes[i].getAttribute('href') || nodes[i].getAttribute('src') ||
-                              nodes[i].getAttribute('action');
+                    var raw = nodes[i].getAttribute(source.attr);
                     if (!raw || /^(#|javascript:|data:|mailto:|tel:)/i.test(raw)) { continue; }
                     var url = resolveUrl(raw, base);
-                    if (url) { out.push(url); }
+                    if (url) {
+                        /* URL objects are not ours to extend safely across
+                           engines, so the marker rides alongside. */
+                        try { url.refKind = source.kind; } catch (e) { /* frozen URL */ }
+                        out.push(url);
+                    }
                 }
             });
         } catch (e) { /* ignore */ }
@@ -1224,6 +1316,67 @@
 
         if (host.indexOf('_') !== -1) { facts.deceptive.push('an underscore, which a real host name cannot contain'); }
 
+        /*
+         * How much a brand match is worth.
+         *
+         * A name that literally contains a company's own ("apple-billing.tk")
+         * needs no defending. A near miss is different: edit distance cannot
+         * tell a misspelling from an ordinary word that happens to sit one
+         * letter away from a brand, and a great many do. "mail" is one letter
+         * from gmail, "case" from chase, "stream" from steam, "finance" from
+         * binance and "telegraph" from telegram - so every company's webmail
+         * host, and the Daily Telegraph, were being read as impersonators.
+         *
+         * Two things separate a typosquat from a collision:
+         *
+         *   Where it sits. The registrable name is the identity somebody had
+         *   to register; the labels in front of it are words its owner chose
+         *   for their own meaning. A misspelling in "mail.company.co.uk"
+         *   costs an attacker nothing to arrange and tells us nothing, so a
+         *   near miss there is not read as a brand at all. An exact name
+         *   still counts anywhere: "paypal.evil.com" is the whole trick.
+         *
+         *   What else the name is doing. Across a set of live typosquats,
+         *   nearly every one sat on free hosting or carried a sign-in or
+         *   bait word beside the misspelling. A misspelling with none of that
+         *   around it is still reported, but as a resemblance rather than as
+         *   a finding that can condemn the page on its own.
+         */
+        var corroborated = !!(facts.platform || facts.credential.length || facts.bait.length ||
+                              facts.generated.length || facts.deceptive.length ||
+                              SUSPICIOUS_TLDS.indexOf(facts.tld) !== -1);
+        facts.brands = facts.brands.filter(function (found) {
+            if (found.kind !== 'near') {
+                found.confident = true;
+                return true;
+            }
+            if (found.label !== facts.site) { return false; }   // an ordinary sub-domain word
+            found.confident = corroborated;
+            return true;
+        });
+
+        /*
+         * A brand spelled across a dot.
+         *
+         * A full stop in a host name is a boundary the reader's eye slides
+         * over: "s.team-zi.com" is steam, spelled so that no single label
+         * ever contains the word. Joining the labels back up is what makes it
+         * visible, and it is only read as a brand when the whole name is
+         * there - a resemblance that only appears once the dots have been
+         * moved is not evidence of anything.
+         *
+         * This runs after the filter above, so it answers the case the
+         * per-label pass could not: no label holds the name, which is exactly
+         * why the name was split across labels.
+         */
+        if (facts.labels.length > 1 && !facts.brands.some(function (b) { return b.confident; })) {
+            var acrossDots = brandLikeness(facts.labels.join(''));
+            if (acrossDots && acrossDots.kind !== 'near') {
+                facts.brands.unshift({label: facts.labels.join('.'), brand: acrossDots.brand,
+                                      kind: acrossDots.kind, acrossDots: true, confident: true});
+            }
+        }
+
         c.hostFacts = facts;
         return facts;
     }
@@ -1231,6 +1384,14 @@
     /** Is this name the brand's own, rather than somebody borrowing it? */
     function ownedByBrand(brand, c, facts) {
         if (brandOwnsDomain(brand, c.domain)) { return true; }
+
+        /* One company, many brand names. Outlook, Office 365 and Microsoft
+           are the same company, so "outlook" on office365.com is that company
+           naming its own product - but each brand's list of domains is
+           written separately and none of them can be complete. Asking whether
+           the brand's home and this domain belong to the same owner settles
+           it from the lists as a whole rather than from any single one. */
+        if (sameOwner(BRAND_SITES[brand], c.domain)) { return true; }
 
         var name = c.domain.split('.')[0];
         var suffix = c.domain.slice(name.length + 1);
@@ -1272,11 +1433,37 @@
         return {width: read('width'), height: read('height')};
     }
 
-    /* Four tests want the same list, and walking a large page four times is
-       four times the cost for the same answer. */
+    /* Several tests want the same list, and walking a large page once per
+       test is that many times the cost for the same answer. */
     function pageRefs(c) {
         if (!c.refs) { c.refs = c.doc ? referencedUrls(c.doc, c.href, 300) : []; }
         return c.refs;
+    }
+
+    /**
+     * Only what the browser fetches on its own: images, stylesheets, scripts,
+     * frames. This is the list to ask "what is this page made of?" - never
+     * pageRefs, which also holds every address the page merely links to.
+     */
+    function pageAssets(c) {
+        if (!c.assetRefs) {
+            c.assetRefs = pageRefs(c).filter(function (url) { return url.refKind === 'asset'; });
+        }
+        return c.assetRefs;
+    }
+
+    /**
+     * What the page fetches, plus where it would submit. This is the list to
+     * ask "where does this page actually send or get things?" - a hyperlink
+     * is an offer, not traffic, so it is left out.
+     */
+    function pageTraffic(c) {
+        if (!c.trafficRefs) {
+            c.trafficRefs = pageRefs(c).filter(function (url) {
+                return url.refKind === 'asset' || url.refKind === 'form';
+            });
+        }
+        return c.trafficRefs;
     }
 
     /** Input fields whose name, id, placeholder or label suggests a purpose. */
@@ -1333,7 +1520,41 @@
             if (site.indexOf(chunk) !== -1) { site = site.split(chunk).join(' '); }
         });
 
-        return {site: site, user: user.join(' \n ').slice(0, 60000)};
+        /* Passages the page presents as somebody else's words. They are
+           collected here but left in the site's own copy: only an editorial
+           page earns the benefit of the doubt, and analyse() decides that. */
+        return {site: site, user: user.join(' \n ').slice(0, 60000), quoted: quotedPassages(doc, site)};
+    }
+
+    /*
+     * Wording a page marks as a quotation rather than a claim.
+     *
+     * Two forms count: an element that exists to hold somebody else's words
+     * (blockquote, q, cite, a figure's caption), and a passage inside
+     * quotation marks in running prose. Spans are length-limited so that one
+     * stray quotation mark cannot swallow a whole page and take the wording
+     * tests with it.
+     */
+    var QUOTE_SPAN = /"([^"\n]{3,300})"|\u201c([^\u201d\n]{3,300})\u201d|\u2018([^\u2019\n]{3,300})\u2019|\u00ab([^\u00bb\n]{3,300})\u00bb/g;
+
+    function quotedPassages(doc, siteText) {
+        var out = [];
+        try {
+            var nodes = doc.querySelectorAll('blockquote, q, cite, figcaption, [class*="quote"], [class*="pull-quote"]');
+            for (var i = 0; i < nodes.length && out.length < 60; i++) {
+                var chunk = String(nodes[i].textContent || '').replace(/\s+/g, ' ').trim();
+                if (chunk.length >= 3 && chunk.length <= 4000) { out.push(chunk); }
+            }
+        } catch (e) { /* ignore */ }
+
+        var text = String(siteText || '').slice(0, 200000);
+        var match;
+        QUOTE_SPAN.lastIndex = 0;
+        while (out.length < 400 && (match = QUOTE_SPAN.exec(text)) !== null) {
+            var span = match[1] || match[2] || match[3] || match[4];
+            if (span) { out.push(span.trim()); }
+        }
+        return out;
     }
 
     /** Does the page look like a conversation, a feed or a set of results? */
@@ -1345,6 +1566,93 @@
                                                  '[class*="conversation"], [class*="chat"], [class*="thread"], ' +
                                                  '[class*="results"], [id*="results"], [class*="timeline"]');
             return !!conversation;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    /**
+     * Can this page take anything from you?
+     *
+     * Every scam has to end somewhere: a password box, a card field, a wallet
+     * address, a number to ring, a collector in its scripts. A page that
+     * describes a scam has none of those, and that absence is what separates
+     * writing about a trick from performing one. It is deliberately generous
+     * about what counts as machinery - one sign is enough - because the cost
+     * of missing one is that a real scam gets read as journalism.
+     */
+    function hasScamMachinery(c) {
+        try {
+            if (c.hasPassword) { return true; }
+            if (fieldsMatching(c.doc, PAYMENT_FIELD_WORDS).length) { return true; }
+            if (fieldsMatching(c.doc, ['otp', 'passcode', 'seed', 'mnemonic', 'recovery']).length) { return true; }
+
+            /* A form that posts anywhere but this site, or nowhere at all. A
+               newspaper's search box and newsletter sign-up post to itself. */
+            var collecting = false;
+            Array.prototype.forEach.call(c.doc.querySelectorAll('form'), function (form) {
+                if (collecting) { return; }
+                var action = (form.getAttribute('action') || '').trim();
+                if (!form.querySelector('input, textarea, select')) { return; }
+                if (/^javascript:/i.test(action)) { collecting = true; return; }
+                var target = action ? resolveUrl(action, c.href) : null;
+                if (target && target.hostname && !sameSite(target.hostname, c.host)) { collecting = true; }
+            });
+            if (collecting) { return true; }
+
+            // Somewhere to send money, or somebody to ring.
+            if (WALLET_ADDRESS.test(c.text)) { return true; }
+            if (SUPPORT_NUMBER.test(c.text)) { return true; }
+
+            // A collector named in the page's own scripts.
+            if (INTEL.exfilEndpoints(c.inline).length) { return true; }
+        } catch (e) {
+            return true;        // cannot tell - assume it can, and judge the wording
+        }
+        return false;
+    }
+
+    /**
+     * Is this page writing *about* something rather than doing it?
+     *
+     * A news report on phishing, a bank's guide to spotting a scam and an
+     * encyclopaedia entry all quote the wording a scam uses, because quoting
+     * it is the point. Reading those quotations as the page's own claims put
+     * the BBC and a bank's fraud advice in the same band as the scams they
+     * warn about.
+     *
+     * The benefit is narrow on purpose. The page has to be shaped like an
+     * article, long enough to be one, and unable to take anything from you -
+     * and even then it only covers wording the page marks as a quotation.
+     */
+    function looksEditorial(c) {
+        try {
+            var doc = c.doc;
+            var structural = doc.querySelector('article, [role="article"], [itemtype*="Article"]') ||
+                             /^(article|news|blog|report)/i.test(
+                                 (doc.querySelector('meta[property="og:type"]') || {getAttribute: function () { return ''; }})
+                                     .getAttribute('content') || '');
+            if (!structural) { return false; }
+
+            /* Long enough to be prose. A scam wearing an <article> tag is a
+               headline and a button; a report is paragraphs. */
+            var text = String(c.text || '');
+            if (text.length < 200) { return false; }
+            if (doc.querySelectorAll('p').length < 2) { return false; }
+
+            /*
+             * A report is mostly the reporter's own writing, with the scam's
+             * words quoted inside it. A scam that has simply put its pitch in
+             * quotation marks is the other way round: take the quotations out
+             * and almost nothing is left. That ratio is what stops the
+             * benefit of the doubt from becoming a way through - wrapping the
+             * pitch in quotes makes a page less like an article, not more.
+             */
+            var quotedLength = 0;
+            (c.quoted || []).forEach(function (passage) { quotedLength += passage.length; });
+            if (quotedLength > text.length * 0.5) { return false; }
+
+            return !hasScamMachinery(c);
         } catch (e) {
             return false;
         }
@@ -1947,41 +2255,75 @@
         },
         {
             id: 'hidden-iframes',
-            about: 'The page loads other pages invisibly. Hidden frames are used to follow you ' +
-                   'between sites, and to float an unseen layer over a button so that your click ' +
-                   'does something other than what the visible page suggests.',
-            title: 'No hidden / zero-sized frames',
-            failTitle: 'Hidden / zero-sized frames',
+            about: 'The page floats an unseen layer over what you can see, so a click lands on a ' +
+                   'frame you were never shown rather than on the button you aimed at. A frame ' +
+                   'that is merely switched off cannot do this; one that is still there, still ' +
+                   'takes clicks, and has simply been made transparent is the whole trick.',
+            title: 'No invisible click-catching frames',
+            failTitle: 'Invisible frame over the page',
             category: 'Content',
             needsDom: true,
-            weight: 8,
+            weight: 12,
             run: function (c) {
                 /*
-                 * Two different things look the same in the markup. A frame
-                 * with no size is a tracking pixel, which half the web serves
-                 * and which says nothing on its own. A frame with a real size
-                 * that has been made invisible is the clickjacking shape:
-                 * something is there to be clicked, and you cannot see it.
+                 * Three different things look alike in the markup, and only
+                 * one of them is an attack.
+                 *
+                 *   display:none / visibility:hidden - the browser does not
+                 *     render these at all, so nothing can be clicked through
+                 *     them. Every application on the web keeps a sign-in
+                 *     frame, a modal or a preloaded panel switched off this
+                 *     way; calling it clickjacking condemned iCloud, Outlook
+                 *     and most of the web's software for ordinary practice.
+                 *   a frame with no size - a tracking pixel. Half the web
+                 *     serves one and it says nothing on its own.
+                 *   a frame that is rendered, still takes clicks, and has
+                 *     been made transparent - this one is the clickjack.
+                 *     Your click reaches it because it is really there; you
+                 *     do not aim away from it because you cannot see it.
+                 *
+                 * Transparency is a slider, not a switch: opacity 0.02 is
+                 * every bit as invisible as opacity 0, and testing only for
+                 * exact zero let the shape through unnoticed.
                  */
                 var pixels = 0;
-                var invisible = [];
+                var clickable = [];
+                var overlaid = false;
+
                 Array.prototype.forEach.call(c.doc.querySelectorAll('iframe'), function (frame) {
                     var box = declaredSize(frame);
                     var style = elementStyle(c.doc, frame);
-                    var unseen = style && (style.display === 'none' || style.visibility === 'hidden' ||
-                                           Number(style.opacity) === 0);
-                    if (box.width > 60 && box.height > 60 && unseen) {
-                        invisible.push(Math.round(box.width) + '×' + Math.round(box.height));
-                    } else if (box.width <= 2 || box.height <= 2 || unseen) {
-                        pixels++;
+                    if (!style) { return; }
+
+                    // Not rendered at all: it can catch nothing.
+                    var switchedOff = style.display === 'none' || style.visibility === 'hidden';
+                    var transparent = !switchedOff && parseFloat(style.opacity || '1') <= 0.05;
+                    // A layer that cannot be clicked cannot steal a click.
+                    var takesClicks = (style.pointerEvents || '') !== 'none';
+                    var big = box.width > 60 && box.height > 60;
+
+                    if (!switchedOff && transparent && takesClicks && big) {
+                        clickable.push(Math.round(box.width) + '×' + Math.round(box.height));
+                        /* Laid deliberately over the page rather than sitting
+                           in the flow: the finished form of the trick. */
+                        if (style.position === 'fixed' || style.position === 'absolute') { overlaid = true; }
+                        return;
                     }
+                    if (box.width <= 2 || box.height <= 2) { pixels++; }
                 });
 
-                if (invisible.length) {
+                if (clickable.length) {
                     return {
-                        detail: invisible.length + ' frame(s) large enough to click (' +
-                                invisible.slice(0, 2).join(', ') + ') are loaded invisibly - the clickjacking shape.',
-                        points: 8
+                        detail: clickable.length + ' invisible frame(s) large enough to click (' +
+                                clickable.slice(0, 2).join(', ') + ') are ' +
+                                (overlaid ? 'laid over the page' : 'loaded transparent') +
+                                ' while still accepting clicks - the clickjacking shape.',
+                        points: overlaid ? 12 : 8,
+                        /* A real clickjack is a threat, not untidiness. It is
+                           only the pixel-counting half of this test that
+                           belongs in the nuisance budget. */
+                        impact: 'threat',
+                        cap: overlaid ? 45 : undefined
                     };
                 }
                 return pixels >= 6
@@ -2727,8 +3069,29 @@
                 });
                 if (!borrowed.length) { return null; }
 
-                var found = borrowed[0];
+                /* A name that carries the brand outright is worth more than a
+                   resemblance nobody can be sure was meant, so the confident
+                   matches are answered first. */
+                var found = borrowed.filter(function (b) { return b.confident; })[0] || borrowed[0];
                 var official = BRAND_SITES[found.brand] || (found.brand + '.com');
+
+                /*
+                 * A misspelling on a name that is doing nothing else suspicious
+                 * may just be a word that happens to sit beside a brand -
+                 * telegraph is one letter from telegram. It is still worth
+                 * saying, but not worth a verdict: a few points and no cap, so
+                 * it can add to a case without being one by itself.
+                 */
+                if (!found.confident) {
+                    return {
+                        detail: 'The name "' + found.label + '" is a letter or two from "' + found.brand +
+                                '", which signs its customers in on ' + official +
+                                '. That may be coincidence - nothing else about this address suggests otherwise.',
+                        points: 3,
+                        cap: 100        // a resemblance alone never decides the verdict
+                    };
+                }
+
                 var how = found.kind === 'near'
                     ? 'spells "' + found.brand + '" in look-alike characters ("' + found.label + '")'
                     : 'carries "' + found.brand + '" in "' + found.label + '"';
@@ -2797,7 +3160,7 @@
                    sign-in word or a generated string there needed no identity
                    and no money to do it. */
                 var reasons = [];
-                if (facts.brands.some(function (b) { return !ownedByBrand(b.brand, c, facts); })) {
+                if (facts.brands.some(function (b) { return b.confident && !ownedByBrand(b.brand, c, facts); })) {
                     reasons.push('a company\'s name');
                 }
                 if (facts.credential.length) { reasons.push('"' + facts.credential[0] + '"'); }
@@ -3011,7 +3374,7 @@
 
                 /* One such word is ordinary - support.company.com, or a login
                    sub-domain. Two, or one alongside a company's name, is not. */
-                var brands = facts.brands.filter(function (b) { return !ownedByBrand(b.brand, c, facts); });
+                var brands = facts.brands.filter(function (b) { return b.confident && !ownedByBrand(b.brand, c, facts); });
                 var words = facts.credential.concat(facts.bait);
                 if (words.length < 2 && !brands.length && !facts.platform) { return null; }
 
@@ -3059,8 +3422,11 @@
             weight: 14,
             run: function (c) {
                 if (isPrivateHost(c.host) || c.url.protocol === 'file:') { return null; }
+                /* What the page fetches or submits to - not what it links
+                    to. A guide to setting up a home server links to
+                    http://192.168.1.1 without sending anything anywhere. */
                 var hits = [];
-                pageRefs(c).forEach(function (url) {
+                pageTraffic(c).forEach(function (url) {
                     if (hits.length < 3 && isPrivateHost(url.hostname)) { hits.push(url.hostname); }
                 });
                 if (!hits.length) { return null; }
@@ -3089,7 +3455,7 @@
                    prose. An article about router security names the same
                    addresses without ever sending anything to them. */
                 var haystack = c.inline.toLowerCase();
-                pageRefs(c).forEach(function (url) { haystack += '\n' + url.href.toLowerCase(); });
+                pageTraffic(c).forEach(function (url) { haystack += '\n' + url.href.toLowerCase(); });
 
                 var gateways = GATEWAY_IPS.filter(function (ip) { return haystack.indexOf(ip) !== -1; });
                 var paths = ROUTER_PATHS.filter(function (path) { return haystack.indexOf(path) !== -1; });
@@ -3244,7 +3610,7 @@
                 Array.prototype.forEach.call(c.doc.querySelectorAll('form[action]'), function (form) {
                     targets += '\naction="' + form.getAttribute('action') + '"';
                 });
-                pageRefs(c).slice(0, 200).forEach(function (url) { targets += '\n' + url.href; });
+                pageTraffic(c).slice(0, 200).forEach(function (url) { targets += '\n' + url.href; });
 
                 var found = INTEL.exfilEndpoints(targets);
                 if (!found.length) { return null; }
@@ -3530,9 +3896,9 @@
         },
         {
             id: 'cloned-brand-assets',
-            about: 'Most of the images and stylesheets come from another company\'s servers. A ' +
-                   'copied page keeps its looks by linking straight back to the original\'s files ' +
-                   'rather than copying them, so the branding is genuine while everything that ' +
+            about: 'The page is built out of another company\'s images and stylesheets. A copied ' +
+                   'page keeps its looks by loading straight from the original\'s servers rather ' +
+                   'than copying the files, so the branding is genuine while everything that ' +
                    'receives your typing is not.',
             cap: 25,
             title: 'Page serves its own images and styles',
@@ -3541,16 +3907,32 @@
             needsDom: true,
             weight: 14,
             run: function (c) {
+                /*
+                 * Only what the browser fetches by itself counts. Linking to
+                 * a company is not wearing its clothes: a search results page,
+                 * an encyclopaedia article and a news story all point at
+                 * apple.com without being a copy of it, and reading hyperlinks
+                 * here made this test report whatever the visitor had searched
+                 * for rather than anything about the page in front of them.
+                 */
                 var counts = {};
-                pageRefs(c).forEach(function (url) {
+                pageAssets(c).forEach(function (url) {
                     var domain = registrableDomain(url.hostname);
                     if (!domain || sameSite(url.hostname, c.host)) { return; }
+                    /* One company's own domains are not "another company's".
+                       Apple serves iCloud's images from apple.com, Microsoft
+                       serves Outlook's from its own CDNs; that is a company
+                       using its own files, which is the opposite of a clone. */
+                    if (sameOwner(domain, c.domain)) { return; }
                     BRAND_DOMAINS.forEach(function (brandDomain) {
                         if (domain === brandDomain) { counts[brandDomain] = (counts[brandDomain] || 0) + 1; }
                     });
                 });
                 var worst = null;
                 Object.keys(counts).forEach(function (domain) {
+                    /* A brand the domain genuinely belongs to, on a country
+                       site or an asset host no list here could enumerate. */
+                    if (brandOwnsDomain(domain.split('.')[0], c.domain)) { return; }
                     if (!worst || counts[domain] > counts[worst]) { worst = domain; }
                 });
                 if (!worst || counts[worst] < 3) { return null; }
@@ -3605,7 +3987,7 @@
             run: function (c) {
                 var claims = countOccurrences(c.text.toLowerCase() + ' ' + c.html.slice(0, 60000).toLowerCase(), SECURITY_SEALS);
                 if (!claims.length) { return null; }
-                var verified = pageRefs(c).some(function (url) {
+                var verified = pageAssets(c).some(function (url) {
                     return SEAL_DOMAINS.indexOf(registrableDomain(url.hostname)) !== -1;
                 });
                 return verified
@@ -4301,7 +4683,7 @@
                 patterns: [],
                 blocked: false,
                 threat: null,
-                context: {kind: null, userDriven: false, reason: ''},
+                context: {kind: null, userDriven: false, editorial: false, reason: ''},
                 totalTests: 0,
                 analysedAt: new Date().toISOString(),
                 error: 'The address "' + href + '" could not be parsed.'
@@ -4355,6 +4737,36 @@
         };
         try {
             ctx.hasPassword = !!(doc && doc.querySelector('input[type="password"]'));
+            /*
+             * A page that writes *about* scams quotes their wording, and
+             * those quotations are not its own claims. The benefit applies
+             * only to an article-shaped page with nothing to collect - see
+             * looksEditorial - and only to the passages it marks as quoted,
+             * which are then taken out of the site's own copy exactly as a
+             * visitor's typing already is.
+             */
+            ctx.quoted = authorship.quoted || [];
+            if (doc && !context.userDriven && looksEditorial(ctx)) {
+                var lifted = 0;
+                (authorship.quoted || []).forEach(function (passage) {
+                    if (passage.length < 3 || ctx.text.length > 400000) { return; }
+                    if (ctx.text.indexOf(passage) !== -1) {
+                        ctx.text = ctx.text.split(passage).join(' ');
+                        lifted++;
+                    }
+                });
+                if (lifted) {
+                    ctx.context = {
+                        kind: context.kind || 'editorial',
+                        userDriven: context.userDriven,
+                        editorial: true,
+                        reason: 'This page writes about its subject rather than selling it, and it has ' +
+                                'nothing to collect, so the wording it quotes is read as reporting ' +
+                                'rather than as a claim of its own.'
+                    };
+                    context = ctx.context;
+                }
+            }
             ctx.claims = doc ? claimedBrands(ctx) : [];
             /* Read once, and never on a page whose words belong to its
                visitors: quoting a test page into a chat window is not being one. */
@@ -4437,6 +4849,17 @@
                 // A test may cap the score only for its most serious outcome.
                 var cap = (typeof outcome === 'object' && outcome.cap !== undefined)
                     ? outcome.cap : check.cap;
+                /*
+                 * A test can hold two findings of different seriousness. The
+                 * frame test counts tracking pixels, which is untidiness, and
+                 * catches clickjacking, which is not; the outcome says which
+                 * of the two it found, and only the nuisance half is held
+                 * inside the nuisance budget.
+                 */
+                if (typeof outcome === 'object' && outcome.impact) {
+                    hygiene = outcome.impact === 'hygiene';
+                    entry.impact = outcome.impact;
+                }
                 entry.status = 'failed';
                 entry.title = check.failTitle || check.title;
                 entry.points = points;
@@ -4552,6 +4975,7 @@
             context: {
                 kind: ctx.context.kind,
                 userDriven: ctx.context.userDriven,
+                editorial: !!ctx.context.editorial,
                 reason: ctx.context.reason
             },
             patterns: patterns,

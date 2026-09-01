@@ -248,3 +248,109 @@ test('no check silently fails to run', () => {
         });
     });
 });
+
+/* ------------------------------- names that only resemble a brand (v5.1) */
+
+test('an ordinary word in a sub-domain is not a misspelled brand', () => {
+    /*
+     * Edit distance cannot tell a typosquat from a word that happens to sit
+     * one letter from a brand, and a great many do: "mail" is one from gmail,
+     * "case" from chase, "stream" from steam, "finance" from binance. Every
+     * company's webmail host was being rated F for it.
+     */
+    ['https://mail.example-corp.co.uk/', 'https://stream.example-corp.com/',
+     'https://finance.example-corp.com/', 'https://case.example-corp.com/',
+     'https://email.example-corp.com/'].forEach((url) => {
+        const report = SpamAnalyzer.analyze(url);
+        assert.ok(!report.failed.some((c) => c.id === 'brand-in-domain'),
+            `${url} was read as impersonating a brand`);
+        assert.strictEqual(report.rating, 'A', `${url} rated ${report.rating}`);
+    });
+});
+
+test('a resemblance with nothing behind it cannot condemn a domain on its own', () => {
+    // "telegraph" is two letters from "telegram". Worth a note, never a verdict.
+    const report = SpamAnalyzer.analyze('https://www.example-telegraph.co.uk/');
+    assert.ok(['A', 'B'].includes(report.rating),
+        `rated ${report.rating}: ${report.failed.map((c) => c.id).join(', ')}`);
+});
+
+test('a misspelling with a phishing name around it still counts', () => {
+    ['https://facbookapp.vercel.app/', 'https://trust-wallaet-io.pages.dev/',
+     'https://exooduseb3wallet.gitbook.io/'].forEach((url) => {
+        const report = SpamAnalyzer.analyze(url);
+        assert.ok(report.failed.some((c) => c.id === 'brand-in-domain'),
+            `${url} was not reported`);
+        assert.ok(report.score < 60, `${url} scored ${report.score}`);
+    });
+});
+
+test('a brand spelled across a dot is still that brand', () => {
+    // "s.team-zi.com" reads as steam; no single label ever holds the word,
+    // which is the whole point of splitting it that way.
+    const report = SpamAnalyzer.analyze('https://s.team-zi.com/');
+    assert.ok(report.failed.some((c) => c.id === 'brand-in-domain'),
+        'a brand spelled across a dot went unreported');
+    assert.ok(report.score < 60, `scored ${report.score}`);
+});
+
+test('one company\'s own brands do not impersonate each other', () => {
+    // Outlook, Office 365 and Microsoft are one company; so are Apple and
+    // iCloud. Each brand's domain list is written separately and none can be
+    // complete, so ownership is settled across the lists rather than within one.
+    ['https://outlook.office365.com/', 'https://outlook.live.com/mail/',
+     'https://photos.icloud.com/', 'https://music.apple.com/',
+     'https://login.microsoftonline.com/', 'https://pay.google.com/'].forEach((url) => {
+        const report = SpamAnalyzer.analyze(url);
+        assert.strictEqual(report.rating, 'A',
+            `${url} rated ${report.rating}: ${report.failed.map((c) => c.id).join(', ')}`);
+    });
+
+    // A brand on a domain its company does not own is still the classic shape.
+    ['https://outlook.evil.tk/', 'https://paypal.secure-verify.tk/',
+     'https://apple.icloud-verify.cf/'].forEach((url) => {
+        assert.ok(SpamAnalyzer.analyze(url).score < 40, `${url} was not caught`);
+    });
+});
+
+test('an ordinary account path is not a phishing kit', () => {
+    /*
+     * "Two sign-in words in a path" is the shape of nearly every real account
+     * area on the web. Measured against the phishing corpus it identified
+     * none of them, while reporting Instagram, Okta, Dropbox and any bank
+     * with a two-step sign-in.
+     */
+    ['https://www.instagram.com/accounts/login/',
+     'https://acme.okta.com/login/login.htm',
+     'https://www.dropbox.com/account/security/password/update',
+     'https://www.example-bank.co.uk/securelogin/verify-account',
+     'https://accounts.example.com/signin/verify'].forEach((url) => {
+        assert.ok(!SpamAnalyzer.analyze(url).failed.some((c) => c.id === 'kit-path'),
+            `${url} was read as a phishing kit`);
+    });
+});
+
+test('a sign-in path handled by a dropped script still is one', () => {
+    // What a kit has and a routed application does not: its own script at the
+    // end of the sign-in path.
+    ['https://example.tk/login/verify/next.php',
+     'https://example.tk/secure/account/update.php',
+     'https://example.tk/account/login/submit.php'].forEach((url) => {
+        assert.ok(SpamAnalyzer.analyze(url).failed.some((c) => c.id === 'kit-path'),
+            `${url} was not reported`);
+    });
+});
+
+test('a long, heavily parameterised address is never a threat by itself', () => {
+    /*
+     * Search, ad-click and analytics links are all long and full of
+     * parameters. Those findings may cost a page a few points, but they must
+     * not be able to move it out of the safe band.
+     */
+    const url = 'https://www.google.com/search?q=claude&oq=claude+&gs_lcrp=' + 'EgRlZGdlKgYIABBFGDkyBggAEEUYOTIJCAEQABgNGIAE'.repeat(4) +
+        '&sourceid=chrome&source=chrome.ob&ie=UTF-8';
+    const report = SpamAnalyzer.analyze(url);
+    assert.strictEqual(report.threatPenalty, 0,
+        `threat findings: ${report.failed.map((c) => c.id).join(', ')}`);
+    assert.ok(['A', 'B'].includes(report.rating), `rated ${report.rating}`);
+});

@@ -101,3 +101,23 @@ https://www.amtso.org/
 https://www.amtso.org/about/
 https://transparencyreport.google.com/safe-browsing/search
 https://safebrowsing.google.com/safebrowsing/report_phish/
+# Ordinary words in a sub-domain that sit one letter from a brand: mail/gmail,
+# stream/steam, finance/binance, case/chase. Every company's webmail host.
+https://mail.cambridge-consultants.co.uk/
+https://webmail.leeds.ac.uk/
+https://stream.channel4.com/
+https://finance.standardbank.co.za/
+https://case.freshworks.com/
+# One company's own brands, which cannot impersonate each other.
+https://outlook.office365.com/mail/
+https://outlook.live.com/mail/0/inbox
+https://photos.icloud.com/
+https://www.icloud.com/find/
+https://music.apple.com/gb/browse
+https://login.microsoftonline.com/common/oauth2/v2.0/authorize
+# Real account areas: two sign-in words in a path is how the web is built.
+https://www.instagram.com/accounts/login/
+https://www.dropbox.com/account/security/password/update
+https://acme.okta.com/login/login.htm
+https://secure.bankofscotland.co.uk/securelogin/verify-account
+https://github.com/login/oauth/authorize?client_id=abc&scope=repo

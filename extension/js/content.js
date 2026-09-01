@@ -854,7 +854,7 @@
 
         /* Why the wording tests were left out - the words here are not the
            site's own, and saying so is more useful than a silent skip. */
-        if (report.context && report.context.userDriven) {
+        if (report.context && (report.context.userDriven || report.context.editorial)) {
             var note = el('div', 'ssc-note');
             note.appendChild(icon('check'));
             note.appendChild(el('span', null, report.context.reason));

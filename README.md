@@ -326,7 +326,7 @@ where the visitor writes the words (see *Context awareness*).
 | 23 | `hostname-length` | URL | URL | Host name is abnormally long | 4 |
 | 24 | `insecure-password-form` | Forms | Page | Password requested over an insecure page | 15 * |
 | 25 | `cross-domain-form` | Forms | Page | Form submits your data to another site | 10 |
-| 26 | `hidden-iframes` | Content | Page | Hidden / zero-sized frames | 8 |
+| 26 | `hidden-iframes` | Content | Page | Invisible frame over the page | 12 * |
 | 27 | `third-party-scripts` | Content | Page | Many third party scripts | 5 |
 | 28 | `spam-phrases` | Content | Page | Classic spam wording in the text | 15 † |
 | 29 | `shouty-text` | Content | Page | Text is written in shouting style | 4 † |
@@ -570,7 +570,7 @@ one worth remembering:
 | `favicon-hotlink` | is the tab icon on another domain? | is it on a **brand's** domain, while the page is not that brand? Serving your icon from your own CDN — gstatic for Google, an asset host for everybody else — is ordinary, and no list of every company's CDN could ever be complete. |
 | `hidden-text` | is there text with `display:none`? | is it hidden by a *stuffing* technique — sized to nothing, coloured to the background, indented off the page? `display:none` is how every menu, dialog and tab panel is built; counting it reported 39,000 hidden characters on google.com. |
 | `overlay-ads` | is there a floating layer? | is the floating layer an **advert** — ad markup, or an ad network's frame inside it? |
-| `hidden-iframes` | are there invisible frames? | is a frame *large enough to click* loaded invisibly (the clickjacking shape)? Zero-sized frames are tracking pixels, and half the web serves them. |
+| `hidden-iframes` | are there invisible frames? | is a frame *large enough to click* loaded invisibly (the clickjacking shape)? Zero-sized frames are tracking pixels, and half the web serves them. *(Refined again in version 5.1 — see below.)* |
 | `kit-path` | is there a long base64-ish value in the query? | *(removed)* Google's own `ved=` parameter matched it. Encoding something is not hiding it. |
 
 And the structural one: **a pattern now requires the thing it is named after.** "Credential
@@ -611,6 +611,87 @@ name:
 * Patterns could never fire on an address alone, because every one of them required a form. Two
   address-level patterns now close that: a borrowed name meeting a throwaway host, and a name and
   path that both mean nothing on hosting that cost nothing.
+
+**Version 5.1 — what a page is made of, and who wrote the words.** Five findings could each
+condemn an ordinary page, and one of them made the verdict depend on something that was not the
+page at all.
+
+| Test | Version 5 asked | Now asks |
+|---|---|---|
+| `cloned-brand-assets` | do three or more references point at a brand's domain? | do three or more **loaded subresources** — images, stylesheets, scripts — come from a brand's domain that **this company does not own**? |
+| `hidden-iframes` | is a big frame `display:none`, `visibility:hidden` or `opacity:0`? | is a big frame **rendered, transparent, and still accepting clicks**? Only that one can catch a click. |
+| `brand-in-domain` | is any label one or two edits from a brand? | for a *misspelling*: is it the **registrable name** rather than an ordinary sub-domain word, and is anything else about the name suspicious? |
+| `kit-path` | do two sign-in words appear in the path? | does a sign-in path end at a **dropped script** (`.php`, `.cgi`)? |
+| `spam-phrases`, `scareware` | does the page contain scam wording? | unchanged — but on an **editorial** page the wording it *quotes* is no longer read as a claim of its own. |
+
+The first is the one worth remembering, because it is a new way for a scanner to be wrong:
+
+> **The verdict tracked the query, not the page.** `cloned-brand-assets` counted every reference
+> in the markup, and `a[href]` is a reference. Searching Google for *"aicloud find my"* returns
+> results full of `apple.com` links, so the test reported "9 images or scripts are loaded from
+> apple.com" — a conclusive finding, capping the score at 25 — and rated Google **F**. Searching
+> for *"claude"* returned no such links and rated the identical page **A**. Two scans of the same
+> site, minutes apart, disagreeing completely, because the finding was measuring what had been
+> typed into the search box.
+
+A hyperlink is not an asset. Following it is the visitor's decision and nothing is fetched until
+they make it, so every reference now carries a marker — `asset` for what the browser fetches by
+itself, `form` for where the page would submit, `link` for somewhere it merely points. A test
+asking *what is this page built out of?* reads assets alone; one asking *where does this page
+send things?* reads assets and form targets. Linking to a company is what search engines,
+encyclopaedias and news sites do all day.
+
+The second cause was the same page's other finding. Apple serves iCloud's images from
+`apple.com`, Microsoft serves Outlook's from its own CDNs, Meta serves Instagram's from
+`cdninstagram.com` — so `www.icloud.com/find` was reported as a clone of itself. The brand tables
+already recorded who owns what; they are now indexed the other way round as well, so
+"is this the same company?" is a lookup rather than a guess.
+
+**A frame that is switched off cannot catch a click.** `display:none` and `visibility:hidden` are
+not rendered, so nothing can be clicked through them — and every application on the web keeps a
+sign-in frame or an unopened dialog that way. Calling it clickjacking cost iCloud and Outlook 8
+points each. Meanwhile the shape that *is* clickjacking was being missed: transparency is a
+slider, not a switch, and a frame at `opacity: 0.01` is exactly as invisible and exactly as
+clickable as one at `0`. The test now asks whether a frame is rendered, near-transparent, large
+enough to click and still hit-testable — and because that is an attack rather than untidiness, it
+counts as a threat instead of sharing the nuisance budget. A test may now classify each of its
+outcomes separately, which is what lets one test hold both the tracking pixel and the clickjack.
+
+**Edit distance cannot tell a typosquat from a coincidence.** `mail` is one letter from `gmail`,
+`case` from `chase`, `stream` from `steam`, `finance` from `binance`, `telegraph` from `telegram`
+— so every company's webmail host was rated **F** for impersonating Google, and so was the Daily
+Telegraph. Two things separate the two: *where* the resemblance sits, since the registrable name
+is what somebody had to register while the labels in front of it are words its owner chose; and
+*what else* the name is doing, since across the phishing corpus nearly every real typosquat sat
+on free hosting or carried a sign-in word beside the misspelling. A misspelling in a sub-domain is
+no longer read as a brand at all, and one standing alone on an ordinary domain is reported as a
+resemblance worth three points rather than a verdict. An **exact** name still counts anywhere.
+
+That change cost one address in the corpus — `s.team-zi.com`, which had been caught because
+"exclusives" happens to sit two edits from "exodus". It is caught again, for the right reason:
+a full stop is a boundary the eye slides over, so the labels are now also joined back up and read
+as one word. `s.team` is steam, spelled so that no single label ever contains it.
+
+**Two sign-in words in a path is how the web is built.** `/accounts/login`, `/login/verify`,
+`/account/security/password` — the rule reported Instagram, Okta, Dropbox and any bank with a
+two-step sign-in, and measured against 234 live phishing addresses it identified **none** of
+them. What a kit has that a routed application does not is its own script at the end of that
+path: `/login/verify/next.php`.
+
+**A page that writes about scams quotes their wording, because quoting it is the point.** A news
+report, a bank's fraud guide and an encyclopaedia entry were being read as making the claims they
+warn about. The existing machinery already separates what the *visitor* wrote from what the site
+says; this adds what the site *quotes*. The benefit is deliberately narrow, and all four
+conditions must hold: the page is shaped like an article, long enough to be one, its quotations
+are a minority of its text, and it has **nothing to collect** — no password box, no card field,
+no wallet, no number to ring, no collector in its scripts. Every scam has to end somewhere, and
+that absence is what separates writing about a trick from performing one. Wrapping a pitch in
+quotation marks makes a page *less* like an article, not more, because taking the quotations out
+leaves nothing behind.
+
+None of this cost detection: across the phishing corpus the caught share moved from 68.8% to
+68.4% — the single address described above — while the legitimate corpus grew by sixteen of the
+addresses that used to be reported and still shows no false positives.
 
 ### How the score is calculated
 

@@ -1,8 +1,8 @@
 # Store listing copy — VeriSite 6.0.0
 
 Paste these into Partner Center → Store listings. Every number here is checked
-against what the extension actually does (`npm run corpus`, `npm test`). If
-the behaviour changes, change this too.
+against what the extension actually does (`npm run corpus`, `npm test`). If the
+behaviour changes, change this too.
 
 ---
 
@@ -14,57 +14,58 @@ Shows the URL of every page you visit and rates it for phishing, pharming and sc
 
 ## Description
 
-VeriSite puts a small button on every page you visit. It shows the address you are really on, and rates the site out of 100 with a grade from A to F. Press it and the full report opens: every check that ran, what each one looks for, and what it found — in plain English, not jargon.
+VeriSite puts a small button on every page you visit. It shows the address you
+are really on and rates the site out of 100, with a grade from A to F. Press it
+and the full report opens: every check that ran, what it looks for, and what it
+found — in plain English.
 
-HOW WELL DOES IT WORK?
+It runs 100 checks in three layers: the address, the page itself (its forms,
+wording, scripts and frames), and nine attack patterns that no single check can
+see alone. A password box is ordinary; a password box on a throwaway sub-domain
+wearing a bank's logo is a phishing kit.
 
-That is the only question worth asking of a tool like this, so it is measured rather than claimed. Against 234 live phishing addresses published by OpenPhish, and 99 ordinary ones chosen to look like them — real projects on the same free hosting, real shops on the same new domain endings, search links carrying 450 characters of tracking:
+Among the things it recognises: look-alike names such as paypa1.com or faceb00k,
+cloned sign-in pages, forms that quietly post your details somewhere else,
+pages meddling with your router's settings, crypto wallet-drainers, fake
+CAPTCHAs and update prompts, tech-support scares, and prize and giveaway scams.
 
-• 69% of the phishing addresses were rated Suspicious or worse, and 79% raised at least one finding — from the address alone, before the page was even read
-• Not one of the 99 legitimate addresses was rated below Probably Safe, and 97% of them raised nothing at all
+It also tries hard not to cry wolf. Search results, assistants, inboxes and
+forums are full of words the site never wrote, so 22 of the wording checks stand
+down there — and the report tells you when they did. A news article about scams,
+a bank's own fraud guide and a company's own sign-in page are all recognised for
+what they are.
 
-Those figures are a floor rather than a ceiling: they come from reading addresses only, and on a real page the extension has the page in front of it too. The measurement runs as part of the test suite, so a change that catches more phishing by also flagging ordinary sites fails the build.
+Everything happens in your browser. No account, no tracking, and no network
+requests of any kind — nothing about the pages you visit ever leaves your
+computer.
 
-To be clear about what that means: nothing is looked up while you browse. The phishing list was used to test the checks, not wired into them.
+VeriSite is a second opinion, not a replacement for the protection built into
+your browser. It has no live blocklist, so a site registered this morning is
+judged on how it is built rather than on what is known about it. It will
+sometimes miss something, and occasionally flag something harmless. Leave
+Microsoft Defender SmartScreen switched on.
 
-WHAT IT LOOKS FOR
+---
 
-100 independent checks, in three layers.
+## How it measures up (optional — for the listing or a reviewer)
 
-• Reputation — addresses that give themselves away, including the published anti-phishing test pages that a working filter is expected to stop you reaching.
-• Heuristics — 37 checks on the address, and 63 on the page itself: the connection, the forms, the wording and the scripts.
-• Patterns — nine combinations that no single check can see on its own. A password box is ordinary. A password box on a throwaway sub-domain wearing a bank's logo is a phishing kit.
+Measured rather than claimed, against 234 live phishing addresses from
+OpenPhish and 115 ordinary ones chosen to look like them — real projects on the
+same free hosting, real shops on the same new domain endings, search links
+carrying hundreds of characters of tracking:
 
-Among the things it recognises:
+* 68% of the phishing addresses were rated Suspicious or worse, and 79% raised
+  at least one finding — from the address alone, before the page was read
+* Not one of the 115 legitimate addresses was rated below Probably Safe, and
+  97% of them raised nothing at all
 
-• Look-alike names — paypa1.com, robiox for roblox, faceb00k with zeros, lnstagram with an l, or a name spelled in Cyrillic that reads as apple.com. Every part of the address is read, not just the domain, because that is where these names hide: the site in faicbok.vercel.app is "faicbok", and nothing is wrong with vercel.app.
-• Credential harvesting — cloned sign-in pages, forms that post to a chat bot or an e-mail address, pages collecting a one-time code alongside your password
-• Pharming — pages working on your router's settings, or pointing at machines inside your own network
-• Crypto wallet drainers — recovery-phrase requests, and approvals dressed up as payments
-• Fake CAPTCHAs that talk you into running a command yourself
-• Tech-support scares, fake update prompts, prize and giveaway scams, gift-card payment demands
-• Malware delivery — a .pdf.exe wearing a document's icon, installers pushed from somewhere other than the site offering them
-• Throwaway addresses — a bank's name on hosting anyone can claim in a minute, a generated name that means nothing, a path made only of identifiers
+Those figures are a floor rather than a ceiling: they come from reading
+addresses only, and on a real page the extension has the page in front of it
+too. The measurement runs as part of the test suite, so a change that catches
+more phishing by also flagging ordinary sites fails the build.
 
-IT KNOWS WHOSE WORDS THEY ARE
-
-Ask an assistant about scams, or search for one, and the page fills with scam vocabulary the site itself never said. VeriSite separates what a site claims from what its visitors typed: 22 of the wording checks stand down on assistants, search results, inboxes and forums, and the report tells you when they did. A page that says those things in its own copy is still caught.
-
-The same care goes the other way. A company's own project page on a platform it does not own, an exchange warning you never to share your recovery phrase, an article explaining how an attack works with the code printed in it — none of these is the thing it resembles, and each one has a test of its own saying so.
-
-EVERYTHING STAYS IN YOUR BROWSER
-
-No account. No tracking. No uploads. The extension makes no network requests at all — there is no fetch, no XMLHttpRequest and no remote code anywhere in it. Every check runs against the page already open in front of you, which is why the report says "runs in this browser".
-
-It asks for access to the sites you visit for one reason: it cannot rate a page it is not allowed to read.
-
-THE BUTTON STAYS OUT OF THE WAY
-
-Drag it anywhere; it remembers where you put it and moves itself clear of a site's own bottom bar. Drag it towards an edge and the whole thing mirrors — the minimise control travels round the pill and it opens the other way, so it never opens off the screen. That turn happens while there is still room to open, not once the edge is reached, and the pill itself stays exactly where you are holding it. Collapse it to a circle showing just the grade, open the report with Alt+Shift+S, or switch the button off entirely and use the toolbar icon instead. Light and dark themes follow your system setting.
-
-WHAT IT IS NOT
-
-VeriSite is a second opinion, not a replacement for the protection built into your browser. It has no live blocklist, so a site registered this morning is judged on how it is built rather than on what is known about it. Roughly a third of the phishing addresses it was measured against were not caught from the address alone, and it will sometimes be wrong the other way too. Leave Microsoft Defender SmartScreen switched on.
+The phishing list was used to test the checks, not wired into them — nothing is
+looked up while you browse.
 
 ---
 
