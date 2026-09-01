@@ -1,6 +1,6 @@
 {
   "name": "verisite",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "private": true,
   "description": "Browser extension that embeds a button showing the current URL and rates the site for phishing, pharming, malware and scam risk.",
   "scripts": {

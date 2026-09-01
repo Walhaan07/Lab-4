@@ -37,7 +37,7 @@ function show(report) {
     }
 
     // Why the wording checks stood down, when they did.
-    if (report.context && report.context.userDriven) {
+    if (report.context && (report.context.userDriven || report.context.editorial)) {
         const li = document.createElement('li');
         li.textContent = report.context.reason;
         list.appendChild(li);

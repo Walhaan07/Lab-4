@@ -1,4 +1,4 @@
-# Store listing copy — VeriSite 5.0.0
+# Store listing copy — VeriSite 5.1.0
 
 Paste these into Partner Center → Store listings. Every number here is checked
 against what the extension actually does (`npm run corpus`, `npm test`). If
