@@ -247,6 +247,9 @@ window.SSC_PANEL_CSS = `
     display: flex;
     align-items: center;
     gap: 7px;
+    /* The pill changes width as it morphs; containing that keeps the work to
+       the dock rather than letting it walk back up the tree. */
+    contain: layout style;
 }
 
 /*
@@ -382,8 +385,12 @@ window.SSC_PANEL_CSS = `
     letter-spacing: -.02em;
 }
 
-/* Used for one frame while the target size is measured. */
-.ssc-measuring, .ssc-measuring * { transition: none !important; }
+/*
+ * Used for one frame while the target size is measured. The transform goes
+ * too: the pill is measured from a pointerdown, and a press already carries
+ * scale(.97), so the answer came back three per cent short of the truth.
+ */
+.ssc-measuring, .ssc-measuring * { transition: none !important; transform: none !important; }
 
 .ssc-button--dragging {
     cursor: grabbing;
@@ -570,6 +577,7 @@ window.SSC_PANEL_CSS = `
     transform-origin: bottom right;   /* replaced with the button's centre */
     animation: ssc-in var(--ssc-dur) var(--ssc-spring) both;
     will-change: transform, opacity;
+    contain: layout style;
 }
 
 /* Held open while the exit plays; content.js removes it on animationend. */
@@ -674,9 +682,17 @@ window.SSC_PANEL_CSS = `
  * only while there is more to scroll in that direction.
  */
 .ssc-panel__body {
+    position: relative;         /* rows measure their scroll offset against it */
     padding: 14px;
     overflow-y: auto;
     overscroll-behavior: contain;
+    /*
+     * Scroll anchoring keeps a reader's place when content appears above them.
+     * Here the content appearing is the fold of passed checks, opened by a
+     * jump that is already scrolling somewhere: the two pulled in opposite
+     * directions and the result was the lurch on the way down.
+     */
+    overflow-anchor: none;
     background:
         linear-gradient(var(--ssc-surface) 40%, transparent) top / 100% 22px no-repeat local,
         linear-gradient(transparent, var(--ssc-surface) 60%) bottom / 100% 22px no-repeat local,
@@ -1121,6 +1137,26 @@ window.SSC_PANEL_CSS = `
 /* passed tests, folded away */
 .ssc-disclosure { margin-top: 14px; border-top: 1px solid var(--ssc-border); padding-top: 12px; }
 
+/*
+ * The fold can hold eighty rows, and giving each of them its own entrance
+ * meant eighty animations starting in the frame it was opened - the frame
+ * that also has to lay all eighty out. It arrives as one block instead, which
+ * is a single composited animation however long the report is.
+ */
+.ssc-disclosure .ssc-item {
+    animation: none;
+    /*
+     * The rows below the fold are laid out as they are scrolled to rather than
+     * all at once. Opening a hundred-check report was a 26ms layout - two
+     * dropped frames at the exact moment the jump starts moving; this is 5ms.
+     * The size is a hint for rows never yet seen; the auto keyword replaces
+     * it with the real one the moment a row has been laid out once.
+     */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 35px;
+}
+.ssc-disclosure[open] > .ssc-list { animation: ssc-rise .34s var(--ssc-ease) both; }
+
 .ssc-disclosure__summary {
     display: flex;
     align-items: center;
@@ -1171,6 +1207,7 @@ window.SSC_PANEL_CSS = `
     .ssc-item__chevron, .ssc-disclosure__chevron { transition: none; }
     .ssc-item--flash { animation: none; outline: 2px solid var(--ssc-dot); }
     .ssc-item, .ssc-tally__item, .ssc-button__badge--pop { animation: none; }
+    .ssc-disclosure[open] > .ssc-list { animation: none; }
     .ssc-button:active, .ssc-btn:active, .ssc-icon-btn:active,
     .ssc-tally__item:active, .ssc-dock__toggle:active { transform: none; }
 }

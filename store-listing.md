@@ -1,4 +1,4 @@
-# Store listing copy — VeriSite 5.0.0
+# Store listing copy — VeriSite 6.0.0
 
 Paste these into Partner Center → Store listings. Every number here is checked
 against what the extension actually does (`npm run corpus`, `npm test`). If
@@ -60,7 +60,7 @@ It asks for access to the sites you visit for one reason: it cannot rate a page 
 
 THE BUTTON STAYS OUT OF THE WAY
 
-Drag it anywhere; it remembers where you put it and moves itself clear of a site's own bottom bar. Park it against the left edge and the whole thing mirrors — the minimise control travels round the pill and it opens the other way, so it never opens off the screen. Collapse it to a circle showing just the grade, open the report with Alt+Shift+S, or switch the button off entirely and use the toolbar icon instead. Light and dark themes follow your system setting.
+Drag it anywhere; it remembers where you put it and moves itself clear of a site's own bottom bar. Drag it towards an edge and the whole thing mirrors — the minimise control travels round the pill and it opens the other way, so it never opens off the screen. That turn happens while there is still room to open, not once the edge is reached, and the pill itself stays exactly where you are holding it. Collapse it to a circle showing just the grade, open the report with Alt+Shift+S, or switch the button off entirely and use the toolbar icon instead. Light and dark themes follow your system setting.
 
 WHAT IT IS NOT
 

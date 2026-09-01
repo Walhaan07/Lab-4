@@ -143,20 +143,33 @@ because many sites pin their own bar down there.
   button settles just above it instead of covering it.
 * **You can drag it anywhere.** Press and drag the button to any corner; the position is
   remembered for next time and always wins over the automatic placement. A press that moves
-  less than 4px still counts as a click, so dragging never opens the report by accident.
+  less than 4px still counts as a click, so dragging never opens the report by accident. What is
+  dragged is the dock's own box, held by whatever part of it you took hold of — so the pill goes
+  exactly where the pointer goes and stops against the edge, whatever else changes underneath.
+  While it is moving it is placed with a **transform** rather than by rewriting its offsets: the
+  same position either way, but one is a composited move and the other lays out the page behind
+  it on every frame.
 * **It opens whichever way there is room.** The pill normally grows leftwards from its anchor,
-  with the minimise control on its inner side. Dragged to the left of the window that would open
-  it straight off the screen, so the whole dock mirrors: the control travels round the pill —
-  along the arc it would trace if it were rolling round it, rather than jumping across — the
-  chevron turns to point the new way, and the pill then opens to the right. The timing is a
-  **spring**, sampled into keyframes rather than approximated with a curve: a cubic-bezier cannot
-  overshoot and settle, and that settle is most of what makes a movement feel like an object
-  rather than a value being interpolated. Measured in the browser it covers 69% of the distance
-  in the first quarter of its time, lifts 65px over the pill, swells to 1.09× at the apex, and
-  lands with a 3% overshoot that is gone by 620ms. The same decision is
-  taken again on every drag, every window resize and every time it is opened, and it is taken
-  from the room actually available rather than from which half of the screen it is in, with the
-  current side keeping its place while it still fits so nothing flaps about mid-drag.
+  with the minimise control on its inner side. Where that would open it straight off the screen
+  the whole dock mirrors: the control travels round the pill — along the arc it would trace if it
+  were rolling round it, rather than jumping across — the chevron turns to point the new way, and
+  the pill then opens to the right. **The pill itself does not move while that happens.** The
+  anchor means the dock's right edge on one side and its left edge on the other, so the box it
+  occupies is measured first and the anchor is derived back from it; only the control travels.
+  The timing is a **spring**, sampled into keyframes rather than approximated with a curve: a
+  cubic-bezier cannot overshoot and settle, and that settle is most of what makes a movement feel
+  like an object rather than a value being interpolated. It covers 71% of the distance in the
+  first quarter of its time, skims 42px over the pill, swells to 1.09× at the apex, and lands
+  with a 2% overshoot that is gone by 485ms.
+* **The turn comes before the edge, not at it.** Which way the dock should grow is settled
+  against the width the pill wants **when it is open**, not the width it happens to have. A
+  collapsed circle fits anywhere, so testing the circle meant the control only turned round once
+  the circle itself reached the edge — by which point opening it was already impossible. Tested
+  against the opened width, the control turns as soon as opening there would run off the side,
+  which on a 1280px window is about 320px out. The decision is taken again on every frame of a
+  drag, every window resize, and every collapse; where both directions have room the current side
+  keeps it, so nothing flaps about in the middle of the window, and a dock parked hard against an
+  edge anchors to that edge so folding it to the circle leaves it in the corner it was put in.
 * **It never outgrows its space.** The pill's width is capped to the room beside it, so a long
   address is truncated rather than pushed off the edge — on a 360px phone-width window the pill,
   the control and the report all still fit.
@@ -166,7 +179,10 @@ because many sites pin their own bar down there.
   available, so it can never overflow however far the button has been dragged.
 * **All of that is verified in a real browser**, not asserted on paper: `npm run ui-check` parks
   the button in every corner, at three window sizes, opens and closes the report at each, and
-  fails if any part of the interface ends up outside the window (see section 6).
+  fails if any part of the interface ends up outside the window (see section 6). It also drags
+  the pill and the circle to each edge one step at a time and fails if the dock ever moves
+  further than the pointer did, or ends up parked on a side with no room to open — the two ways
+  the geometry can go wrong without anything leaving the window.
 
 ## 4. Part 2 — the spam test and the safety rating
 
@@ -212,6 +228,19 @@ it."*
 to the first check of that kind and flashes it, which matters on a page where sixteen findings
 do not fit on screen at once.
 
+*Passed* is the hard one: it has to unfold eighty-odd rows and scroll to them in the same
+gesture, and three things had to change before that read as one movement rather than a stutter.
+The fold is opened, then the scroll waits a frame — measuring in the same turn asked where a row
+was before the browser had placed it, so the scroll set off towards a target that then moved.
+The row's position is read from **layout offsets rather than a rect**, since an ancestor part way
+through its entrance carries a transform and a rect is measured through it. And the scroll itself
+is a short ease driven frame by frame here rather than `scrollTo({behavior: 'smooth'})`: the
+native one is re-aimed by the compositor as the content around it settles, which is exactly the
+moment it is used. Underneath, the folded rows are laid out as they are scrolled to rather than
+all at once (`content-visibility`), and they arrive as one animation instead of eighty. Opening a
+hundred-check report went from 26ms of layout — two dropped frames at the moment the jump starts
+moving — to 5ms.
+
 **Every check explains itself.** Click any row, passed or failed, and it expands to say what
 that check looks for and why it matters, in three or four sentences of plain English. The rows
 are `<details>` elements, so the keyboard and screen-reader behaviour comes from the element
@@ -246,6 +275,16 @@ ring, the rating badge and the findings all share.
   rating letter pops in when a scan lands, the minimise control turns rather than swapping its
   icon, and everything pressable gives slightly under the press. All of it is dropped under
   `prefers-reduced-motion`.
+* **Keeping to the frame.** A curve only reads as one if every frame of it is drawn, so the work
+  is kept off the main thread where it can be and out of the animating frame where it cannot.
+  The host is a contained box, so the pill changing width cannot mark the page behind it for
+  layout. Pointer moves are collapsed to one per frame and resize events to one per frame, since
+  both fire faster than the screen refreshes. The pill's width is left alone while it is dragged
+  and re-fitted when it lands, rather than re-fitted on every move. And re-opening the report no
+  longer rebuilds its hundred rows: that was a long synchronous stretch in the same frame as the
+  opening animation, and the first third of the animation was dropped paying for it. The
+  measurement it depends on is taken with transforms switched off, so a press's own `scale(.97)`
+  cannot make the pill report itself three per cent narrower than it is.
 * **The collapsed letter** is centred against the circle rather than laid out beside its
   siblings — the folded label still takes part in the flex line — and measured from rendered
   pixels at 4x it sits within 0.13px of the centre on every verdict.

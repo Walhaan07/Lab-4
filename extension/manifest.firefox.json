@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "VeriSite",
-  "version": "5.0.0",
+  "version": "6.0.0",
   "description": "Shows the URL of every page you visit and rates it for phishing, pharming and scam risk. 100 checks, all in your browser.",
   "permissions": [
     "storage",

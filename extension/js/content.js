@@ -27,6 +27,7 @@
     var shadow = null;
     var elements = {};
     var lastReport = null;
+    var renderedReport = null;          // what the panel is currently showing
     var position = {right: DEFAULT_POSITION.right, bottom: DEFAULT_POSITION.bottom};
     var positionIsUserChosen = false;   // a dragged position always wins
     var collapsed = false;              // pill shown as a circle
@@ -34,6 +35,8 @@
     var morphTimer = null;
     var morphDelay = null;              // an opening waiting for the toggle to arrive
     var orbit = null;                   // the toggle's trip around the pill
+    var dragBase = null;                // where the anchor was when a drag began
+    var morphing = false;               // the pill is between its two shapes
     var EDGE = 10;                      // closest the UI comes to a window edge
     var DOCK_GAP = 7;                   // matches the dock's CSS gap
 
@@ -108,11 +111,20 @@
          * sites put their own fixed bar there - a chat composer, a cookie
          * notice - and the button would cover it. The user can drag it
          * anywhere from there.
+         *
+         * `contain` matters as much as the rest of the line: without it the
+         * pill changing width - the morph, the label folding - marks the page
+         * behind it for layout too, and on a heavy site that is the difference
+         * between an animation that runs on its own and one that waits for the
+         * document. The box is already a fixed 0x0 anchor, so containing its
+         * size and layout costs nothing; paint is deliberately left out, since
+         * containing that would clip the UI to the anchor.
          */
         host.style.cssText = 'all: initial; position: fixed; ' +
                              'right: ' + DEFAULT_POSITION.right + 'px; ' +
                              'bottom: ' + DEFAULT_POSITION.bottom + 'px; ' +
-                             'width: 0; height: 0; z-index: 2147483647;';
+                             'width: 0; height: 0; z-index: 2147483647; ' +
+                             'contain: layout style size;';
         (document.body || document.documentElement).appendChild(host);
 
         shadow = host.attachShadow({mode: 'open'});
@@ -204,6 +216,20 @@
         elements = {host: host, dock: dock, button: button, badge: badge,
                     toggle: collapseToggle, panel: panel, body: body};
 
+        /*
+         * Bound here rather than in renderReport: the body outlives every
+         * render, so binding it there left one more listener behind on each
+         * open, and by the tenth the panel was being measured and placed ten
+         * times for a single row opening.
+         */
+        body.addEventListener('toggle', function (event) {
+            // Opening a check changes the height, so the panel is placed again.
+            if (event.target && event.target.classList.contains('ssc-item__box')) { placePanel(); }
+        }, true);
+        // A wheel or a swipe during the jump animation hands the scroll back.
+        body.addEventListener('wheel', stopScroll, {passive: true});
+        body.addEventListener('touchstart', stopScroll, {passive: true});
+
         collapseToggle.addEventListener('click', function () { setCollapsed(!collapsed, true); });
 
         button.addEventListener('click', togglePanel);
@@ -225,6 +251,12 @@
      * The whole UI hangs off a zero-sized anchor. Everything to do with which
      * way it opens comes down to one question: is there room between that
      * anchor and the edge of the window for what is about to appear?
+     *
+     * The anchor is not the same edge on both sides - it is the dock's right
+     * edge when the dock grows left, and its left edge when it grows right -
+     * so everything below works in the dock's own box and converts to the
+     * anchor at the last moment. Turning the side without re-deriving the
+     * anchor was what threw the whole dock a full width across the window.
      */
 
     function anchorX() {
@@ -239,29 +271,104 @@
         }
     }
 
+    function toggleWidth() { return elements.toggle.offsetWidth || 24; }
+    function dockWidth() { return elements.dock.offsetWidth; }
+    function dockHeight() { return elements.dock.offsetHeight; }
+
+    /** Where the dock's left edge sits in the window. */
+    function dockLeft(forSide, width) {
+        if (width === undefined) { width = dockWidth(); }
+        return (forSide || side) === 'left' ? anchorX() : anchorX() - width;
+    }
+
+    /** The anchor offset that puts a dock `width` wide with its left edge at `left`. */
+    function rightForDockLeft(left, forSide, width) {
+        if (width === undefined) { width = dockWidth(); }
+        return window.innerWidth - ((forSide || side) === 'left' ? left : left + width);
+    }
+
     /** Room between the anchor and the window edge, on either side. */
     function roomOn(which, x) {
         if (x === undefined) { x = anchorX(); }
         return Math.max(0, (which === 'right' ? x : window.innerWidth - x) - EDGE);
     }
 
-    /**
-     * Which way should something `width` wide open?
+    /*
+     * How wide the dock wants to be with the whole address showing.
      *
-     * The current side wins whenever it still fits, so the pill does not flap
-     * from side to side while it is being dragged past the middle of a window.
+     * Measuring it is a layout, so the answer is kept until something that
+     * could change it happens - a new address, or a new window size.
      */
-    function preferredSide(width, x) {
-        if (roomOn(side, x) >= width) { return side; }
-        if (roomOn('right', x) >= width) { return 'right'; }
-        if (roomOn('left', x) >= width) { return 'left'; }
-        return roomOn('left', x) > roomOn('right', x) ? 'left' : 'right';
+    var naturalWidth = 0;
+    var naturalStale = true;
+
+    function naturalDockWidth() {
+        /*
+         * Never measured while the pill is mid-morph. Measuring switches every
+         * transition in the subtree off for a frame, and doing that to a
+         * transition already running cancels it, leaving the pill snapped to
+         * its target instead of arriving there. The last answer stands until
+         * the shape has landed, which is why it is replaced rather than
+         * emptied - there is always something sensible to answer with.
+         */
+        if ((naturalStale || !naturalWidth) && !morphing) {
+            naturalWidth = measureButton(false, true).width + toggleWidth() + DOCK_GAP;
+            naturalStale = false;
+        }
+        return Math.min(naturalWidth || dockWidth(), window.innerWidth - 2 * EDGE);
     }
 
-    /* The pill never grows past the room it has, however long the address is. */
+    function forgetNaturalWidth() { naturalStale = true; }
+
+    /**
+     * Which way should a dock `width` wide, with its left edge at `left`, grow?
+     *
+     * The question is not whether the dock fits where it is - collapsed to a
+     * circle it fits anywhere - but whether it would still fit once opened.
+     * So the width tested is the one the pill wants when it is showing the
+     * address, and the toggle turns round as soon as opening would run the
+     * pill off the edge rather than only once the circle itself reaches it.
+     *
+     * Where both directions have room the current side keeps it, which is what
+     * stops the toggle flapping while the pill is dragged across the middle of
+     * a wide window.
+     */
+    function sideForBox(left, width, want) {
+        if (width === undefined) { width = dockWidth(); }
+        if (want === undefined) { want = naturalDockWidth(); }
+        var fitsRight = (left + width) - want >= EDGE;                  // grows leftwards
+        var fitsLeft = left + want <= window.innerWidth - EDGE;         // grows rightwards
+        if (fitsRight && fitsLeft) {
+            /* Parked hard against an edge, the dock anchors to that edge:
+               folding to the circle then leaves it in the corner it was put
+               in, instead of sliding a pill's width back into the page. */
+            if (left <= EDGE + 1) { return 'left'; }
+            if (left + width >= window.innerWidth - EDGE - 1) { return 'right'; }
+            return side;
+        }
+        if (fitsRight) { return 'right'; }
+        if (fitsLeft) { return 'left'; }
+        // Neither direction can hold it: take the roomier one.
+        return (left + width) > (window.innerWidth - left) ? 'right' : 'left';
+    }
+
+    /** Keeps a dock box of this size inside the window. */
+    function clampBox(left, top, width, height) {
+        return {
+            left: clamp(left, EDGE, Math.max(EDGE, window.innerWidth - width - EDGE)),
+            top: clamp(top, EDGE, Math.max(EDGE, window.innerHeight - height - EDGE))
+        };
+    }
+
+    /*
+     * The pill never grows past the room it has, however long the address is.
+     * It is left alone during a drag: re-fitting on every pointer move made
+     * the pill change width under the cursor, and the box is kept inside the
+     * window by the drag itself.
+     */
     function applyRoomLimit() {
-        var toggle = elements.toggle.offsetWidth || 24;
-        var room = roomOn(side) - toggle - DOCK_GAP;
+        if (dragBase) { return; }
+        var room = roomOn(side) - toggleWidth() - DOCK_GAP;
         elements.button.style.maxWidth = Math.max(120, Math.min(460, Math.round(room))) + 'px';
     }
 
@@ -314,16 +421,23 @@
         if (reducedMotion() || typeof toggle.animate !== 'function') { return 0; }
 
         var radius = Math.abs(dx) / 2;
-        var lift = Math.max(radius, 14);
+        /*
+         * A shallow arc, not a semicircle. The toggle's trip is as wide as the
+         * pill - close to 400px - and lifting it by half of that threw it high
+         * above the window rather than round the thing it belongs to. Held to
+         * a fifth of the distance and capped, it skims the top of the pill at
+         * any width.
+         */
+        var lift = clamp(Math.abs(dx) * 0.2, 14, 42);
         var direction = dx >= 0 ? 1 : -1;
         var centre = dx / 2;
-        var duration = 620;
+        var duration = 520;
         var frames = [];
-        var steps = 44;                     // dense enough that the samples read as a curve
+        var steps = 30;                     // dense enough that the samples read as a curve
 
         for (var i = 0; i <= steps; i++) {
             var t = i / steps;
-            var progress = springAt(t * duration / 1000, 0.5, 0.74);
+            var progress = springAt(t * duration / 1000, 0.42, 0.78);
             /* The arc's height and the scale follow the un-overshot progress,
                so the lift cannot invert into a dip below the resting line;
                only the travel itself springs past and comes back. */
@@ -344,6 +458,9 @@
 
         if (orbit) { orbit.cancel(); }
         toggle.classList.add('ssc-dock__toggle--orbiting');
+        /* Asked for before the animation starts, so the layer is ready for the
+           first frame rather than being made during it. */
+        toggle.style.willChange = 'transform';
         /* linear: the timing is already in the samples, and easing them a
            second time would flatten the spring back into a slide. */
         orbit = toggle.animate(frames, {duration: duration, easing: 'linear', fill: 'none'});
@@ -354,6 +471,7 @@
         mine.onfinish = mine.oncancel = function () {
             if (orbit !== mine) { return; }
             toggle.classList.remove('ssc-dock__toggle--orbiting');
+            toggle.style.willChange = '';
             orbit = null;
         };
         return duration;
@@ -367,8 +485,19 @@
         if (next === side) { applyRoomLimit(); return 0; }
 
         var before = elements.toggle.getBoundingClientRect();
+        var width = dockWidth();
+        var left = dockLeft(side, width);        // where the dock is, before the turn
+
         side = next;
         elements.dock.classList.toggle('ssc-dock--left', side === 'left');
+        /*
+         * The anchor swaps ends with the side, so leaving it alone moved the
+         * dock a full width sideways - the jump that looked like the pill
+         * running away from the cursor and parking itself near the middle of
+         * the window. Deriving the anchor back from the box it already
+         * occupies means nothing moves but the toggle.
+         */
+        setPosition({right: rightForDockLeft(left, side, width), bottom: position.bottom});
         applyRoomLimit();
         updateToggleIcon();
         var after = elements.toggle.getBoundingClientRect();
@@ -378,29 +507,17 @@
         return duration;
     }
 
-    /* Keeps the anchor far enough from the edges that the dock stays whole. */
-    function limitsFor(dock) {
-        var width = dock ? dock.width : elements.dock.offsetWidth;
-        var height = dock ? dock.height : elements.dock.offsetHeight;
-        // Anchored from the right edge: a bigger `right` moves it left.
-        var low = side === 'left' ? Math.round(width) + EDGE : EDGE;
-        var high = side === 'left'
-            ? window.innerWidth - EDGE
-            : window.innerWidth - Math.round(width) - EDGE;
-        return {
-            right: [Math.min(low, Math.max(EDGE, high)), Math.max(EDGE, high)],
-            bottom: [EDGE, Math.max(EDGE, window.innerHeight - Math.round(height) - EDGE)]
-        };
-    }
-
     /** Puts the dock back inside the window after a drag, resize or restore. */
     function settleInsideWindow() {
-        var dock = elements.dock.getBoundingClientRect();
-        setSide(preferredSide(dock.width), false);
-        var limits = limitsFor(dock);
+        var width = dockWidth();
+        var height = dockHeight();
+        var box = clampBox(dockLeft(side, width),
+                           window.innerHeight - position.bottom - height, width, height);
+
+        setSide(sideForBox(box.left, width), false);
         setPosition({
-            right: clamp(position.right, limits.right[0], limits.right[1]),
-            bottom: clamp(position.bottom, limits.bottom[0], limits.bottom[1])
+            right: rightForDockLeft(box.left, side, width),
+            bottom: window.innerHeight - (box.top + height)
         });
         applyRoomLimit();
     }
@@ -564,24 +681,92 @@
 
     /** Scrolls the report to the first check of a given severity. */
     function jumpToGroup(key) {
-        var body = elements.body;
+        var disclosure = elements.body.querySelector('.ssc-disclosure');
 
-        if (key === 'pass') {
-            var disclosure = body.querySelector('.ssc-disclosure');
-            if (disclosure) { disclosure.open = true; }
+        if (key === 'pass' && disclosure && !disclosure.open) {
+            disclosure.open = true;
+            /*
+             * Opening the fold adds every passed check at once. Measuring in
+             * the same turn asked where a row was before the browser had
+             * placed it, so the scroll set off towards a target that then
+             * moved - which is the stutter the jump had. One frame's wait
+             * costs nothing and the answer is then the real one.
+             */
+            window.requestAnimationFrame(function () { scrollToGroup(key); });
+            return;
         }
+        scrollToGroup(key);
+    }
 
+    /*
+     * How far a row sits down the scrolling box, in layout terms.
+     *
+     * A rect would be measured through whatever transform the row's entrance
+     * animation is part way through, and the offsets have to be walked rather
+     * than read once: an ancestor being animated carries a transform of its
+     * own, and that makes it the offset parent for everything inside it.
+     */
+    function offsetWithin(node, container) {
+        var y = 0;
+        while (node && node !== container) {
+            y += node.offsetTop;
+            node = node.offsetParent;
+        }
+        return node === container ? y : null;
+    }
+
+    function scrollToGroup(key) {
+        var body = elements.body;
         var target = body.querySelector('.ssc-item--' + key);
         if (!target) { return; }
 
-        /* The container is scrolled directly rather than with scrollIntoView,
-           which would also scroll the page behind the panel. */
-        var smooth = !window.matchMedia || !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        var delta = target.getBoundingClientRect().top - body.getBoundingClientRect().top;
-        body.scrollTo({top: body.scrollTop + delta - 8, behavior: smooth ? 'smooth' : 'auto'});
+        var top = offsetWithin(target, body);
+        if (top === null) {                     // nothing to walk up: measure it
+            top = body.scrollTop +
+                  target.getBoundingClientRect().top - body.getBoundingClientRect().top;
+        }
+        smoothScroll(body, top - 8);
 
         target.classList.add('ssc-item--flash');
         window.setTimeout(function () { target.classList.remove('ssc-item--flash'); }, 1300);
+    }
+
+    /*
+     * The report's own scroll, rather than scrollTo({behavior: 'smooth'}).
+     *
+     * The native one is driven from the compositor and re-aims itself as the
+     * content around it settles, which is exactly the moment this is used -
+     * seventy rows have just been revealed. A short ease run here knows where
+     * it is going from the first frame and takes a fixed time to get there.
+     */
+    var scrollFrame = 0;
+
+    function stopScroll() {
+        if (scrollFrame) { window.cancelAnimationFrame(scrollFrame); scrollFrame = 0; }
+    }
+
+    function smoothScroll(node, to) {
+        var from = node.scrollTop;
+        to = clamp(to, 0, Math.max(0, node.scrollHeight - node.clientHeight));
+        var delta = to - from;
+
+        stopScroll();
+        if (!delta) { return; }
+        if (reducedMotion()) { node.scrollTop = to; return; }
+
+        /* Longer for a longer trip, the way a sheet does, but bounded so a
+           hundred checks never make it feel slow. */
+        var duration = clamp(200 + Math.abs(delta) * 0.5, 260, 560);
+        var began = 0;
+
+        var step = function (now) {
+            if (!began) { began = now; }
+            var t = clamp((now - began) / duration, 0, 1);
+            // quick away, long settle - the panel's own curve, in one dimension
+            node.scrollTop = from + delta * (1 - Math.pow(1 - t, 4));
+            scrollFrame = t < 1 ? window.requestAnimationFrame(step) : 0;
+        };
+        scrollFrame = window.requestAnimationFrame(step);
     }
 
     /*
@@ -626,6 +811,7 @@
 
     function renderReport(report) {
         var body = elements.body;
+        stopScroll();
         body.replaceChildren();
 
         /* A recognised threat is not a matter of degree - it goes first, above
@@ -747,11 +933,7 @@
                 report.skipped.length + ' check(s) could not run on this page.'));
         }
 
-        // Opening a check changes the height, so the panel is placed again.
-        body.addEventListener('toggle', function (event) {
-            if (event.target && event.target.classList.contains('ssc-item__box')) { placePanel(); }
-        }, true);
-
+        renderedReport = report;
         placePanel();          // the content just changed the panel's height
     }
 
@@ -895,8 +1077,14 @@
             elements.panel.hidden = false;
             placePanel();
             elements.button.setAttribute('aria-expanded', 'true');
-            // The page was already scanned on arrival, so this usually just draws.
-            if (lastReport) { renderReport(lastReport); } else { runTests(true); }
+            /*
+             * The page was already scanned on arrival, so this usually has
+             * nothing to do. Rebuilding the hundred rows anyway put a long
+             * synchronous stretch in the same frame as the opening animation,
+             * and the first third of that animation was dropped.
+             */
+            if (!lastReport) { runTests(true); }
+            else if (renderedReport !== lastReport) { renderReport(lastReport); }
         } else {
             hidePanel();
         }
@@ -984,9 +1172,13 @@
 
     function morphButton(toMini) {
         var button = elements.button;
-        var start = button.getBoundingClientRect();
+        /* The laid-out size, not a measured rect: the pill carries a transform
+           of its own while it is pressed or hovered, and starting the morph
+           from a scaled rect made it jolt on the first frame. */
+        var start = {width: button.offsetWidth, height: button.offsetHeight};
         var end = measureButton(toMini);
 
+        morphing = true;
         button.style.width = start.width + 'px';
         button.style.height = start.height + 'px';
         void button.offsetWidth;                                 // flush
@@ -1011,6 +1203,7 @@
             if (event && (event.target !== button || event.propertyName !== 'width')) { return; }
             window.clearTimeout(morphTimer);
             button.removeEventListener('transitionend', done);
+            morphing = false;
             // hand the size back to the stylesheet once it has arrived
             button.style.width = '';
             button.style.height = '';
@@ -1035,16 +1228,22 @@
         morphDelay = null;
 
         var travel = 0;
-        if (!collapsed && !instant) {
-            var wanted = measureButton(false, true).width +
-                         (elements.toggle.offsetWidth || 24) + DOCK_GAP;
-            travel = setSide(preferredSide(wanted), true);
+        if (!instant) {
+            /* Both directions are re-checked, not just the opening one: after
+               a collapse the circle may sit where the pill could no longer
+               open, and the toggle should already be pointing the way it will
+               go before it is pressed. */
+            travel = setSide(sideForBox(dockLeft(), dockWidth(), naturalDockWidth()), true);
         }
         applyRoomLimit();
         updateToggleIcon();
 
         if (instant) {
             elements.button.classList.toggle('ssc-button--mini', collapsed);
+            /* The remembered shape and the remembered corner come back from
+               storage separately, so the side is settled here against the box
+               the circle actually ends up in rather than the pill's. */
+            settleInsideWindow();
         } else if (travel) {
             var shape = collapsed;
             morphDelay = window.setTimeout(function () {
@@ -1145,76 +1344,121 @@
      */
     function makeDraggable() {
         var button = elements.button;
-        var start = null;
+        var drag = null;
+
+        /*
+         * One move per frame.
+         *
+         * A pointer reports far more often than the screen refreshes - more
+         * again on a high rate trackpad - and the moves in between are work
+         * nothing ever shows. The last position is recorded and the geometry
+         * is done once, in the frame that is about to be painted.
+         */
+        function apply() {
+            if (!drag) { return; }
+            drag.frame = 0;
+
+            var box = clampBox(drag.x - drag.grabX, drag.y - drag.grabY, drag.width, drag.height);
+
+            /*
+             * The side is settled from the box the dock now occupies, and the
+             * anchor is then derived back from that same box, so turning it
+             * moves the toggle round the pill and nothing else. It is settled
+             * against the width the pill wants when it is open, not the width
+             * it happens to have: dragging the collapsed circle towards an
+             * edge turns the toggle round as soon as opening there would run
+             * off the side, rather than at the edge itself.
+             */
+            var wanted = sideForBox(box.left, drag.width, drag.want);
+            if (wanted !== side) { setSide(wanted, true); }
+
+            setPosition({
+                right: rightForDockLeft(box.left, side, drag.width),
+                bottom: window.innerHeight - (box.top + drag.height)
+            });
+        }
+
+        function schedule() {
+            if (drag && !drag.frame) { drag.frame = window.requestAnimationFrame(apply); }
+        }
 
         button.addEventListener('pointerdown', function (event) {
             if (event.button !== 0) { return; }
-            var box = elements.host.getBoundingClientRect();
-            start = {
+            var dock = elements.dock.getBoundingClientRect();
+            drag = {
+                /* Where inside the dock it was taken hold of. Tracking that
+                   rather than the anchor is what keeps the pill under the
+                   cursor when the side turns. */
+                grabX: event.clientX - dock.left,
+                grabY: event.clientY - dock.top,
+                width: dock.width,
+                height: dock.height,
+                want: naturalDockWidth(),
                 x: event.clientX,
                 y: event.clientY,
-                right: window.innerWidth - box.right,
-                bottom: window.innerHeight - box.bottom,
-                moved: false
+                fromX: event.clientX,
+                fromY: event.clientY,
+                moved: false,
+                frame: 0
             };
             button.setPointerCapture(event.pointerId);
         });
 
         button.addEventListener('pointermove', function (event) {
-            if (!start) { return; }
-            var dx = event.clientX - start.x;
-            var dy = event.clientY - start.y;
+            if (!drag) { return; }
+            drag.x = event.clientX;
+            drag.y = event.clientY;
 
-            if (!start.moved && Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) { return; }
-            start.moved = true;
-            button.classList.add('ssc-button--dragging');
-            hidePanel();
-
-            /*
-             * The dock is measured, not the pill: the toggle sits beside it
-             * and would otherwise be pushed off the edge.
-             *
-             * The side is settled before the position is clamped, because the
-             * two answers depend on each other - which way the dock grows
-             * decides how close to an edge the anchor may go.
-             */
-            var dock = elements.dock.getBoundingClientRect();
-            var wanted = preferredSide(dock.width, window.innerWidth - (start.right - dx));
-            if (wanted !== side) { setSide(wanted, true); }
-
-            var limits = limitsFor(elements.dock.getBoundingClientRect());
-            setPosition({
-                right: clamp(start.right - dx, limits.right[0], limits.right[1]),
-                bottom: clamp(start.bottom - dy, limits.bottom[0], limits.bottom[1])
-            });
-            applyRoomLimit();
+            if (!drag.moved) {
+                if (Math.abs(event.clientX - drag.fromX) +
+                    Math.abs(event.clientY - drag.fromY) < DRAG_THRESHOLD) { return; }
+                drag.moved = true;
+                button.classList.add('ssc-button--dragging');
+                hidePanel();
+                beginDragMove();
+            }
+            schedule();
         });
 
         var finish = function (event) {
-            if (!start) { return; }
-            var wasDrag = start.moved;
-            start = null;
+            if (!drag) { return; }
+            var wasDrag = drag.moved;
+            if (drag.frame) { window.cancelAnimationFrame(drag.frame); }
+            drag = null;
             button.classList.remove('ssc-button--dragging');
             try { button.releasePointerCapture(event.pointerId); } catch (e) { /* already gone */ }
-            if (wasDrag) {
-                positionIsUserChosen = true;
-                savePosition();
-                // Swallow the click that follows the drag.
-                button.addEventListener('click', function stop(clickEvent) {
-                    clickEvent.stopImmediatePropagation();
-                    button.removeEventListener('click', stop, true);
-                }, true);
-            }
+            if (!wasDrag) { return; }
+
+            endDragMove();
+            settleInsideWindow();          // the pill may want its full width back here
+            positionIsUserChosen = true;
+            savePosition();
+            // Swallow the click that follows the drag.
+            button.addEventListener('click', function stop(clickEvent) {
+                clickEvent.stopImmediatePropagation();
+                button.removeEventListener('click', stop, true);
+            }, true);
         };
 
         button.addEventListener('pointerup', finish);
         button.addEventListener('pointercancel', finish);
 
-        // Keep the button on screen when the window is resized.
+        /*
+         * Keep the button on screen when the window is resized - once per
+         * frame. A window being dragged by its corner fires resize far faster
+         * than the screen refreshes, and each of these measures the dock, the
+         * panel and what the page has painted along its bottom edge.
+         */
+        var resizeFrame = 0;
         window.addEventListener('resize', function () {
-            settleInsideWindow();
-            avoidBottomBar();
-            if (!elements.panel.hidden) { placePanel(); }
+            if (resizeFrame) { return; }
+            resizeFrame = window.requestAnimationFrame(function () {
+                resizeFrame = 0;
+                forgetNaturalWidth();      // a narrower window caps how wide the pill may open
+                settleInsideWindow();
+                avoidBottomBar();
+                if (!elements.panel.hidden) { placePanel(); }
+            });
         });
     }
 
@@ -1222,17 +1466,57 @@
         return Math.min(high, Math.max(low, value));
     }
 
-    function setPosition(next) {
-        position = next;
-        elements.host.style.right = next.right + 'px';
-        elements.host.style.bottom = next.bottom + 'px';
+    /*
+     * While the pill is being dragged the anchor moves with a transform rather
+     * than by writing `right` and `bottom`. Both describe the same place, but
+     * one is a composited move and the other is a layout of the page behind
+     * it every frame, which is what turned a drag into a series of steps.
+     */
+    function beginDragMove() {
+        dragBase = {right: position.right, bottom: position.bottom};
+        elements.host.style.willChange = 'transform';
     }
 
+    function endDragMove() {
+        if (!dragBase) { return; }
+        dragBase = null;
+        /* Cleared and committed in the same write, so there is no frame in
+           which the offsets have moved but the transform has not. */
+        elements.host.style.transform = '';
+        elements.host.style.willChange = '';
+        setPosition(position);
+    }
+
+    function setPosition(next) {
+        position = next;
+        if (dragBase) {
+            elements.host.style.transform =
+                'translate3d(' + Math.round(dragBase.right - next.right) + 'px, ' +
+                                 Math.round(dragBase.bottom - next.bottom) + 'px, 0)';
+            return;
+        }
+        elements.host.style.right = Math.round(next.right) + 'px';
+        elements.host.style.bottom = Math.round(next.bottom) + 'px';
+    }
+
+    /*
+     * What is remembered is the dock's box, not the anchor: the anchor means a
+     * different edge on each side, so a corner saved while the pill was parked
+     * on the left came back a full width away from where it was left. Both
+     * edges are kept, and the one the dock was parked against is the one it is
+     * put back against, so it stays in its corner whatever size the window is
+     * next time.
+     */
     function savePosition() {
+        var width = dockWidth();
+        var left = dockLeft(side, width);
         try {
-            chrome.storage.local.set({buttonPosition: position}, function () {
-                void chrome.runtime.lastError;
-            });
+            chrome.storage.local.set({buttonPosition: {
+                side: side,
+                left: Math.round(left),
+                right: Math.round(window.innerWidth - left - width),
+                bottom: Math.round(position.bottom)
+            }}, function () { void chrome.runtime.lastError; });
         } catch (e) { /* storage unavailable - the position lasts for this page */ }
     }
 
@@ -1240,12 +1524,31 @@
         try {
             chrome.storage.local.get({buttonPosition: null}, function (stored) {
                 var saved = stored && stored.buttonPosition;
-                if (!saved || typeof saved.right !== 'number' || typeof saved.bottom !== 'number') {
+                if (!saved || typeof saved.bottom !== 'number') {
                     avoidBottomBar();       // no saved corner: fit around this page
                     return;
                 }
                 positionIsUserChosen = true;
-                setPosition({right: saved.right, bottom: saved.bottom});
+
+                var width = dockWidth();
+                var left;
+                if (typeof saved.side === 'string' && typeof saved.left === 'number' &&
+                    typeof saved.right === 'number') {
+                    left = saved.side === 'left'
+                        ? saved.left                                  // parked against the left
+                        : window.innerWidth - saved.right - width;    // parked against the right
+                } else if (typeof saved.right === 'number') {
+                    /* Written by version 5 and earlier, where the number was
+                       the anchor. Read it as one; the next drag rewrites it. */
+                    left = (window.innerWidth - saved.right) - (side === 'left' ? 0 : width);
+                } else {
+                    avoidBottomBar();
+                    return;
+                }
+                setPosition({
+                    right: rightForDockLeft(left, side, width),
+                    bottom: saved.bottom
+                });
                 settleInsideWindow();     // the window may be a different size now
             });
         } catch (e) { /* storage unavailable - keep the default corner */ }
@@ -1297,7 +1600,11 @@
 
     function updateLabel() {
         var label = shadow.querySelector('.ssc-button__url');
-        if (label) { label.textContent = '"' + shortUrl(location.href) + '"'; }
+        var text = '"' + shortUrl(location.href) + '"';
+        if (label && label.textContent !== text) {
+            label.textContent = text;
+            forgetNaturalWidth();       // a different address is a different width
+        }
         elements.button.title = 'You are on ' + location.href +
             '\nClick for the safety report (Alt+Shift+S)' +
             '\nDrag to move it out of the way';
