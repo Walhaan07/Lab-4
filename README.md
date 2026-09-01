@@ -161,15 +161,19 @@ because many sites pin their own bar down there.
   like an object rather than a value being interpolated. It covers 71% of the distance in the
   first quarter of its time, skims 42px over the pill, swells to 1.09× at the apex, and lands
   with a 2% overshoot that is gone by 485ms.
-* **The turn comes before the edge, not at it.** Which way the dock should grow is settled
-  against the width the pill wants **when it is open**, not the width it happens to have. A
-  collapsed circle fits anywhere, so testing the circle meant the control only turned round once
-  the circle itself reached the edge — by which point opening it was already impossible. Tested
-  against the opened width, the control turns as soon as opening there would run off the side,
-  which on a 1280px window is about 320px out. The decision is taken again on every frame of a
-  drag, every window resize, and every collapse; where both directions have room the current side
-  keeps it, so nothing flaps about in the middle of the window, and a dock parked hard against an
-  edge anchors to that edge so folding it to the circle leaves it in the corner it was put in.
+* **The turn comes before the edge, not at it.** Two questions decide which way the dock grows,
+  and a control that turns once there is nowhere left to go has turned too late for either.
+  *Is there room to open?* is settled against the width the pill wants **when it is open**, not
+  the width it happens to have — a collapsed circle fits anywhere, so testing the circle meant
+  the control only turned once the circle itself reached the edge, by which point opening it was
+  already impossible. Tested against the opened width, it turns as soon as opening there would
+  run off the side: about 320px out on a 1280px window. An opened pill, though, has room on both
+  sides almost everywhere, so for that the question is *which edge is it being parked against?*
+  — and the answer is the **last twentieth of its travel**, roughly 43px on that same window,
+  rather than the edge itself. Nine tenths of the window in the middle belong to neither edge,
+  and there the current side simply stays, so nothing flaps about mid-drag. Both are settled
+  again on every frame of a drag, every window resize and every collapse; parking against an edge
+  anchors the dock to it, so folding to the circle leaves it in the corner it was put in.
 * **It never outgrows its space.** The pill's width is capped to the room beside it, so a long
   address is truncated rather than pushed off the edge — on a 360px phone-width window the pill,
   the control and the report all still fit.
@@ -181,18 +185,34 @@ because many sites pin their own bar down there.
   the button in every corner, at three window sizes, opens and closes the report at each, and
   fails if any part of the interface ends up outside the window (see section 6). It also drags
   the pill and the circle to each edge one step at a time and fails if the dock ever moves
-  further than the pointer did, or ends up parked on a side with no room to open — the two ways
-  the geometry can go wrong without anything leaving the window.
+  further than the pointer did, if it ends up parked on a side with no room to open, or if the
+  control only turns once the pill is flush against the window — the three ways the geometry can
+  go wrong without anything leaving the window. And it raises a badly-rated dialog, dismisses it
+  the way a single page app does (the address first, the markup a moment later) and fails if the
+  dialog's verdict is still on the pill afterwards.
 
 ## 4. Part 2 — the spam test and the safety rating
 
 Pressing the button (or **Alt+Shift+S**) runs all 100 checks and opens a report showing the
 score, the letter rating, every finding with its penalty, and the checks that passed.
 
-**The verdict appears on its own.** The page is checked automatically about half a second
-after it loads, so the pill is already coloured when you arrive — a cyan-teal gradient for a
-safe site, amber and orange in between, deep red for one that fails. Nothing has to be
-clicked, and a single page app that changes its address without reloading is re-checked too.
+**The verdict appears on its own.** The page is checked automatically once it has finished
+drawing, so the pill is already coloured when you arrive — a cyan-teal gradient for a safe
+site, amber and orange in between, deep red for one that fails. Nothing has to be clicked,
+and a single page app that changes its address without reloading is re-checked too.
+
+**A verdict is only true of the page as it was when it was read**, which on a single page app
+is a shorter moment than it sounds. A view is built over several frames and a dialog leaves its
+markup in the document while it animates away, so a scan on a fixed delay read whatever happened
+to be there at that instant — and since nothing looked again until the address changed, a rating
+taken from a half-dismissed dialog stayed on the pill afterwards. A page could sit there marked
+unsafe on the strength of something that was no longer on it. Two things fix that. Every scan
+now waits for the document to stop changing, with a ceiling so a conversation streaming a reply
+is still rated. And for as long as the pill is showing a **warning** — only then, which is why
+this costs nothing on the pages where nothing is wrong — changes to the document send the scan
+round again, so a warning that stops being true comes down by itself. That watch is given a life
+rather than left running, since by twenty seconds the verdict has had every chance to change its
+mind.
 
 The label and shield are white on every verdict. That is why the ramps run deep rather than
 pastel: white text on bright cyan is unreadable, so the gradient carries its brightness in a

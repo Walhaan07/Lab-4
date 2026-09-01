@@ -38,6 +38,7 @@
     var dragBase = null;                // where the anchor was when a drag began
     var morphing = false;               // the pill is between its two shapes
     var EDGE = 10;                      // closest the UI comes to a window edge
+    var EDGE_BAND = 0.05;               // how near an edge counts as parked against it
     var DOCK_GAP = 7;                   // matches the dock's CSS gap
 
     /* ------------------------------------------------------------- helpers */
@@ -339,11 +340,28 @@
         var fitsRight = (left + width) - want >= EDGE;                  // grows leftwards
         var fitsLeft = left + want <= window.innerWidth - EDGE;         // grows rightwards
         if (fitsRight && fitsLeft) {
-            /* Parked hard against an edge, the dock anchors to that edge:
-               folding to the circle then leaves it in the corner it was put
-               in, instead of sliding a pill's width back into the page. */
-            if (left <= EDGE + 1) { return 'left'; }
-            if (left + width >= window.innerWidth - EDGE - 1) { return 'right'; }
+            /*
+             * Near an edge the dock anchors to that edge, so folding it to the
+             * circle leaves it in the corner it was put in instead of sliding
+             * a pill's width back into the page, and the chevron is already
+             * pointing the way it will go before it is pressed.
+             *
+             * Near, not flush. An opened pill has room on both sides almost
+             * everywhere, so this is what decides its side, and testing for
+             * the edge itself meant the turn only came at the very end of the
+             * drag - once the pill had nowhere left to go. The last twentieth
+             * of the travel is close enough to read as parking against that
+             * edge, and it leaves nine tenths of the window in the middle
+             * where neither edge pulls and the current side simply stays.
+             */
+            var span = window.innerWidth - width - 2 * EDGE;
+            /* Wider than the window it is in, so it is against both edges at
+               once. Growing inwards from the left is the only direction that
+               leaves the room limit anything to squeeze the pill into. */
+            if (span <= 0) { return 'left'; }
+            var along = (left - EDGE) / span;      // 0 at the far left, 1 at the far right
+            if (along <= EDGE_BAND) { return 'left'; }
+            if (along >= 1 - EDGE_BAND) { return 'right'; }
             return side;
         }
         if (fitsRight) { return 'right'; }
@@ -562,6 +580,7 @@
             if (!quiet || !elements.panel.hidden) { renderReport(report); }
             updateBadge(report);
             publish(report);
+            reviewWhileUnsafe(report);
         }, 30);
     }
 
@@ -1561,8 +1580,106 @@
      * would leave the button showing a stale URL and a rating that belongs to
      * the previous view. Watch for that and reset.
      */
-    var rescanTimer = null;
     var closeTimer = null;
+    var scanTimer = null;
+    var stillness = null;               // watches for the page to stop changing
+    var review = null;                  // watches a page the pill is warning about
+    var reviewTimer = null;
+
+    var SCAN_QUIET = 400;               // the document must be this still to be read
+    var SCAN_LIMIT = 2500;              // ...but a page that never settles is still rated
+    var REVIEW_LIFE = 20000;            // how long a warning is kept under review
+
+    function stopScanWatch() {
+        window.clearTimeout(scanTimer);
+        scanTimer = null;
+        if (stillness) { stillness.disconnect(); stillness = null; }
+    }
+
+    /*
+     * Scan the page once it has stopped changing.
+     *
+     * A single page app swaps what is on screen without loading anything, and
+     * it does not do it in one go: a dialog being dismissed leaves its markup
+     * in the document while it animates away, and a new view is built over
+     * several frames. Scanning on a fixed delay meant whatever happened to be
+     * there at that instant decided the verdict - and since nothing looks
+     * again until the address changes, a rating read off a half-removed dialog
+     * stayed on the pill afterwards. A page could sit there marked unsafe on
+     * the strength of something that was no longer on it.
+     *
+     * So the scan waits for the document to be still, and every change pushes
+     * it back. The ceiling matters as much as the wait: a page that never
+     * stops - a conversation streaming a reply - still gets rated.
+     */
+    function scheduleScan() {
+        stopScanWatch();
+        var ceiling = Date.now() + SCAN_LIMIT;
+
+        var run = function () {
+            stopScanWatch();
+            runTests(true, elements.panel.hidden);
+        };
+
+        var bump = function () {
+            window.clearTimeout(scanTimer);
+            if (Date.now() >= ceiling) { run(); return; }
+            scanTimer = window.setTimeout(run, SCAN_QUIET);
+        };
+
+        try {
+            stillness = new MutationObserver(bump);
+            /* childList only, and the records are never read: this has to be
+               cheap enough to leave running on a busy page for a second or
+               two, and all it is being asked is whether anything happened. */
+            stillness.observe(document.documentElement, {childList: true, subtree: true});
+        } catch (e) {
+            stillness = null;           // no observer: the plain wait still applies
+        }
+        bump();
+    }
+
+    /*
+     * While the pill is warning about a page, keep looking at it.
+     *
+     * A verdict is only ever true of the page as it was when it was read, and
+     * it is the bad one that must not be allowed to go stale: a page left
+     * marked unsafe on the strength of a dialog that has since been dismissed
+     * accuses something that is no longer there. So for as long as a warning
+     * is up, changes to the document send the scan round again - and the moment
+     * the page comes back clean the watch stops, which is why this costs
+     * nothing on the pages where nothing is wrong.
+     *
+     * It is given a life rather than left running: a page that is genuinely
+     * unsafe and also busy would otherwise be re-read for as long as it was
+     * open, and by then the verdict has had every chance to change its mind.
+     */
+    function stopReview() {
+        window.clearTimeout(reviewTimer);
+        reviewTimer = null;
+        if (review) { review.disconnect(); review = null; }
+    }
+
+    function reviewWhileUnsafe(report) {
+        if (report && (report.level === 'safe' || report.level === 'ok')) { stopReview(); return; }
+        if (review || typeof MutationObserver !== 'function') { return; }
+
+        try {
+            review = new MutationObserver(function () {
+                // A scan is already on its way: it will read whatever this was.
+                if (scanTimer || stillness) { return; }
+                scheduleScan();
+            });
+            review.observe(document.documentElement, {childList: true, subtree: true});
+            /* Timed from when the warning first went up rather than from the
+               last look, so it cannot renew itself: a page that is genuinely
+               unsafe and also busy would otherwise be re-read for as long as
+               it stayed open. Moving to another view starts a fresh one. */
+            reviewTimer = window.setTimeout(stopReview, REVIEW_LIFE);
+        } catch (e) {
+            review = null;
+        }
+    }
 
     function watchNavigation() {
         var current = location.href;
@@ -1571,14 +1688,12 @@
             if (location.href === current) { return; }
             current = location.href;
             lastReport = null;
+            stopReview();               // this view gets its own budget
             updateLabel();
             elements.button.classList.remove('ssc-button--has-rating');
             setButtonLevel(null);
-            // Re-scan the new view so the pill recolours by itself.
-            window.clearTimeout(rescanTimer);
-            rescanTimer = window.setTimeout(function () {
-                runTests(true, elements.panel.hidden);
-            }, 500);
+            // Re-scan the new view, once it has settled, so the pill recolours.
+            scheduleScan();
         };
 
         window.addEventListener('popstate', onChange);
@@ -1678,12 +1793,10 @@
         window.setTimeout(avoidBottomBar, 1200);
         watchNavigation();
 
-        /* Scan on arrival so the pill already shows the verdict. The short
-           delay lets the page finish drawing, since half the checks read the
-           rendered document. */
-        window.setTimeout(function () {
-            loadLocalBlockList(function () { runTests(true, true); });
-        }, 500);
+        /* Scan on arrival so the pill already shows the verdict, once the
+           page has finished drawing - half the checks read the rendered
+           document, and a page still building is not the page it will be. */
+        loadLocalBlockList(function () { scheduleScan(); });
         try {
             chrome.storage.sync.get({showButton: true}, function (prefs) {
                 applyVisibility(prefs.showButton);
